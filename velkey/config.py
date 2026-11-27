@@ -23,6 +23,7 @@ DEFAULTS = {
     "autotype_hotkey": "Ctrl+Alt+Shift+Z",
     "autotype_match_url": True,
     "autotype_require_match": True,
+    "autotype_password_field_only": True,
     "autotype_always_show_dialog": False,
     "autotype_minimize_after": True,
     "portal_restore_token": "",

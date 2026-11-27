@@ -1615,7 +1615,8 @@ class MainWindow(Gtk.ApplicationWindow):
             self._autotype_done(err)
             if not self.config.get("autotype_minimize_after"):
                 self.deiconify()
-        self.app.typer.type_sequence(e, seq or e.effective_sequence(), done, initial_delay=0.1)
+        self.app.typer.type_sequence(e, seq or e.effective_sequence(), done, initial_delay=0.1,
+                                     field_check=self._field_check(self.app.probe.last_pid))
         e.touch(modify=False)
 
     def _autotype_refused(self, why):
@@ -1624,10 +1625,17 @@ class MainWindow(Gtk.ApplicationWindow):
         self.set_status("Auto-Type cancelled: " + why, 10)
         self.app.notify("Auto-Type cancelled", why)
 
+    def _field_check(self, pid):
+        """Checker for 'only type the password into a password box', or None."""
+        if not self.config.get("autotype_password_field_only"):
+            return None
+        tr = self.app.focus
+        return lambda wait: tr.wait_for_password_field(pid) if wait else tr.field_from_thread(pid)
+
     def _autotype_done(self, err):
         if err:
-            self.set_status("Auto-Type failed: %s" % err, 8)
-            self.app.notify("Auto-Type failed", err)
+            self.set_status("Auto-Type: %s" % err, 10)
+            self.app.notify("Auto-Type", err)
 
     def global_autotype(self):
         if self.app.typer.busy:
@@ -1650,6 +1658,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self.unlock_pw.grab_focus()
             return
         target = self.app.probe.last_id
+        check = self._field_check(self.app.probe.last_pid)
         hk = self.app.hotkey
         wait = hk.wait_released if hk is not None else None
         url = browser.url_for_window(title)
@@ -1669,7 +1678,8 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         if len(matches) == 1 and not self.config.get("autotype_always_show_dialog"):
             e, seq = matches[0]
-            self.app.typer.type_sequence(e, seq, self._autotype_done, initial_delay=0.05, wait_before=wait)
+            self.app.typer.type_sequence(e, seq, self._autotype_done, initial_delay=0.05, wait_before=wait,
+                                         field_check=check)
             e.touch(modify=False)
             return
 
@@ -1678,7 +1688,8 @@ class MainWindow(Gtk.ApplicationWindow):
             # the picker had focus: give it back to the target window before typing
             self.app.probe.activate(target, title)
             GLib.timeout_add(300, lambda: (self.app.typer.type_sequence(e, seq, self._autotype_done,
-                                                                        initial_delay=0.15), False)[1])
+                                                                        initial_delay=0.15,
+                                                                        field_check=check), False)[1])
         picker = dialogs.AutoTypePicker(self.db, matches or None, title, pick)
         # Wayland: a window from a background app does not get focus on its own
         GLib.timeout_add(150, lambda: (self.app.probe.activate(None, picker.get_title()), False)[1])

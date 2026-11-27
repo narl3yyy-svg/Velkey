@@ -174,6 +174,8 @@ def _token(token, entry, mods, out):
         return
     val = field_value(entry, up) if entry is not None else None
     if val is not None:
+        if up == "PASSWORD":
+            out.append(("pwgate",))  # Auto-Type checks for a password box here
         out.append(("text", val))
         return
     m = re.match(r"^(\S+?)(?:\s+|=)(\d+)$", token)
@@ -382,6 +384,8 @@ class _X11:
             title, _, _ = self.prop(dpy, win, "_NET_WM_NAME")
             if not title:
                 title, _, _ = self.prop(dpy, win, "WM_NAME")
+            pid, _, _ = self.prop(dpy, win, "_NET_WM_PID")
+            self.last_pid = pid[0] if pid else 0
             return title.decode("utf-8", "replace") if title else ""
         finally:
             self.x.XCloseDisplay(dpy)
@@ -441,6 +445,8 @@ def flatten(actions, default_delay):
             out.append(("sleep", a[1] / 1000.0))
         elif kind == "setdelay":
             delay = a[1]
+        elif kind == "pwgate":
+            out.append(("pwgate",))
         elif kind == "clearfield":
             out.append(("press", _char_keysym("a"), frozenset(["ctrl"])))
             out.append(("sleep", delay / 1000.0))
@@ -451,6 +457,10 @@ def flatten(actions, default_delay):
 
 class TyperError(Exception):
     pass
+
+
+class PasswordFieldError(Exception):
+    """Typing stopped because the focused field is not a password box."""
 
 
 class X11Typer:
@@ -777,10 +787,15 @@ class AutoTyper:
                 continue
         return None
 
-    def type_sequence(self, entry, sequence, on_done=None, initial_delay=0.0, wait_before=None):
+    def type_sequence(self, entry, sequence, on_done=None, initial_delay=0.0, wait_before=None,
+                      field_check=None):
         """Parse and type `sequence` for `entry` (must be called on main thread).
         `wait_before` is called on the worker thread before typing starts, e.g.
-        to wait until the user has let go of the global hot key."""
+        to wait until the user has let go of the global hot key.
+        `field_check(wait)` (worker thread) returns a11y.FieldInfo for the
+        focused field of the target; when given, the password is only typed
+        into a password box. If the cursor already is in the password box the
+        part before {PASSWORD} (user name, Tab) is skipped."""
         if self.busy:
             return
         b = self.backend()
@@ -802,7 +817,13 @@ class AutoTyper:
                 if on_done:
                     on_done(err)
                 return
-            compiled = b.compile(events) if hasattr(b, "compile") else events
+            segs = [[]]  # split at each {PASSWORD}
+            for ev in events:
+                if ev[0] == "pwgate":
+                    segs.append([])
+                else:
+                    segs[-1].append(ev)
+            compiled = [b.compile(s) if hasattr(b, "compile") else s for s in segs]
 
             def work():
                 err = None
@@ -810,7 +831,24 @@ class AutoTyper:
                     if wait_before is not None:
                         wait_before()
                     time.sleep(initial_delay)
-                    b.run(compiled)
+                    start = 0
+                    if field_check is not None and len(compiled) > 1:
+                        info = field_check(False)
+                        if not info.known:
+                            raise PasswordFieldError(
+                                "Nothing was typed: Velkey cannot tell which field is selected (%s)." % info.why)
+                        if info.password:
+                            start = 1  # already in the password box: just the password (and Enter)
+                    for i in range(start, len(compiled)):
+                        if i > 0 and field_check is not None and not (i == 1 and start == 1):
+                            info = field_check(True)
+                            if not info.password:
+                                raise PasswordFieldError(
+                                    "The user name was typed, but the password was not: the cursor is not in "
+                                    "a password box. Click the password box and use Auto-Type again.")
+                        b.run(compiled[i])
+                except PasswordFieldError as e:
+                    err = str(e)
                 except Exception as e:  # noqa
                     err = str(e)
                     if isinstance(b, PortalTyper):
@@ -827,7 +865,7 @@ class AutoTyper:
 # active window detection
 # --------------------------------------------------------------------------
 KWIN_IFACE_XML = """<node><interface name="io.github.velkey.KWin">
-<method name="Window"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
+<method name="Window"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/></method>
 </interface></node>"""
 
 
@@ -837,6 +875,7 @@ class WindowProbe:
         self._pending = []
         self._reg = None
         self.last_id = ""
+        self.last_pid = 0
         if is_kde() and conn is not None:
             try:
                 info = Gio.DBusNodeInfo.new_for_xml(KWIN_IFACE_XML)
@@ -846,8 +885,12 @@ class WindowProbe:
                 self._reg = None
 
     def _on_call(self, conn, sender, path, iface, method, params, inv):
-        caption, cls, wid = params.unpack()
+        caption, cls, wid, pid = params.unpack()
         self.last_id = wid
+        try:
+            self.last_pid = int(pid)
+        except ValueError:
+            self.last_pid = 0
         inv.return_value(None)
         pend, self._pending = self._pending, []
         for cb in pend:
@@ -857,6 +900,7 @@ class WindowProbe:
         """Calls cb(title, wm_class) asynchronously; title '' if unknown.
         On KDE, `self.last_id` is the KWin id of that window afterwards."""
         self.last_id = ""
+        self.last_pid = 0
         if self._reg is not None:
             try:
                 self._kwin(cb)
@@ -865,7 +909,10 @@ class WindowProbe:
                 pass
         if session_type() == "x11":
             try:
-                cb(x11().active_window_title(), "")
+                X = x11()
+                title = X.active_window_title()
+                self.last_pid = getattr(X, "last_pid", 0)
+                cb(title, "")
                 return
             except Exception:
                 pass
@@ -876,7 +923,7 @@ class WindowProbe:
         js = ('var w = workspace.activeWindow || workspace.activeClient;'
               'callDBus("%s", "/io/github/velkey/KWin", "io.github.velkey.KWin", "Window",'
               ' w ? String(w.caption) : "", w ? String(w.resourceClass) : "",'
-              ' w ? String(w.internalId) : "");' % name)
+              ' w ? String(w.internalId) : "", w ? String(w.pid) : "0");' % name)
         done = {"v": False}
         cleanup = self._run_kwin(js)
 

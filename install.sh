@@ -73,17 +73,18 @@ if command -v python3 >/dev/null 2>&1; then
   python3 - <<'EOF' 2>/dev/null || missing+=("gtk")
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+gi.require_version("Atspi", "2.0")
+from gi.repository import Gtk, Atspi
 EOF
 fi
 
 if (( ${#missing[@]} )); then
   warn "Missing: Python 3 GTK bindings (${missing[*]})"
   pkgs=""; pm=""
-  if command -v apt-get >/dev/null 2>&1; then pm="sudo apt-get install -y"; pkgs="python3 python3-gi gir1.2-gtk-3.0"
-  elif command -v dnf >/dev/null 2>&1; then pm="sudo dnf install -y"; pkgs="python3 python3-gobject gtk3"
-  elif command -v pacman >/dev/null 2>&1; then pm="sudo pacman -S --needed --noconfirm"; pkgs="python python-gobject gtk3"
-  elif command -v zypper >/dev/null 2>&1; then pm="sudo zypper install -y"; pkgs="python3 python3-gobject python3-gobject-Gdk typelib-1_0-Gtk-3_0"
+  if command -v apt-get >/dev/null 2>&1; then pm="sudo apt-get install -y"; pkgs="python3 python3-gi gir1.2-gtk-3.0 gir1.2-atspi-2.0"
+  elif command -v dnf >/dev/null 2>&1; then pm="sudo dnf install -y"; pkgs="python3 python3-gobject gtk3 at-spi2-core"
+  elif command -v pacman >/dev/null 2>&1; then pm="sudo pacman -S --needed --noconfirm"; pkgs="python python-gobject gtk3 at-spi2-core"
+  elif command -v zypper >/dev/null 2>&1; then pm="sudo zypper install -y"; pkgs="python3 python3-gobject python3-gobject-Gdk typelib-1_0-Gtk-3_0 typelib-1_0-Atspi-2_0"
   fi
   [[ -n "$pm" ]] || die "Please install Python 3 with PyGObject and GTK 3 using your package manager, then re-run."
   read -r -p "  Install them now with: $pm $pkgs ? [Y/n] " ans || ans="n"

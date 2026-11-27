@@ -26,6 +26,7 @@ class VelkeyApp(Gtk.Application):
         self.tray = None
         self.typer = None
         self.probe = None
+        self.focus = None
         self._start_minimized = False
         GLib.set_application_name("Velkey")
         GLib.set_prgname(APP_ID)  # = Wayland app id: must match the .desktop file name
@@ -42,6 +43,8 @@ class VelkeyApp(Gtk.Application):
         self.typer = autotype.AutoTyper(self.config)
         conn = self.get_dbus_connection()
         self.probe = autotype.WindowProbe(conn)
+        from .a11y import FocusTracker
+        self.focus = FocusTracker()
         self.hotkey = autotype.GlobalHotkey(conn, self.config.get("autotype_hotkey"), self._on_hotkey)
         self.hotkey.start()
         self._watch_screensaver(conn)

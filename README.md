@@ -153,6 +153,20 @@ When the URL is known, a page that only *looks* right (same title, different dom
 > [!NOTE]
 > Browsers save their tab list about 2 seconds after a page loads. If you press the hot key the instant a page appears, Velkey waits a moment and checks again.
 
+### The password only goes into a password box
+
+Velkey checks **which field the cursor is in** before it types your password:
+
+| Where you clicked | What Velkey does |
+|---|---|
+| The **password box** | Types only the password (and Enter). The user name part is skipped |
+| The **user name box** | Types the user name and Tab. It types the password **only if** the cursor then lands in a password box. Otherwise it stops and tells you |
+| Anything Velkey can't identify | Types nothing |
+
+On two-step logins (Google, Microsoft…), press the shortcut once on the user name page, click **Next**, then click the password box and press it again.
+
+Velkey reads the field type through the Linux accessibility system (AT-SPI), the same thing screen readers use. You can turn this check off in *Tools → Options → Auto-Type*, but it's on by default.
+
 If nothing matches, **nothing is typed**. You can relax this in *Tools → Options → Auto-Type → "Only type into a window that matches the entry"*, but it's on by default for your safety.
 
 <details>
@@ -261,6 +275,23 @@ velkey --version
 - The database must be **unlocked**. If it's locked, Velkey pops up and asks for your password first.
 - The window must **match an entry** (see [How Velkey knows it's the right site](#how-velkey-knows-its-the-right-site)). If none matches, you get a notification that nothing was typed.
 - On KDE, check that nothing else uses the shortcut: *System Settings → Shortcuts → Velkey*.
+
+</details>
+
+<details>
+<summary><b>"Velkey cannot tell which field is selected"</b></summary>
+
+<br>
+
+The app didn't report its focused field to the accessibility system. To see what Velkey sees, start it from a terminal with:
+
+```bash
+VELKEY_DEBUG=1 ./run.sh
+```
+
+Click a password box in your browser. A line like `[velkey a11y] focus pid=… role=password text` should appear.
+
+If nothing appears for a **Chromium-based browser** (Chrome, Helium, Brave, Vivaldi, Edge), start the browser with `--force-renderer-accessibility` (add it to the end of the `Exec=` line in its `.desktop` file). Firefox reports fields out of the box. Your desktop's accessibility service must also be running (it is by default on KDE and GNOME).
 
 </details>
 
