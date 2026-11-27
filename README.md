@@ -268,7 +268,7 @@ On **Wayland**, the first Auto-Type asks once for permission to send keyboard in
 - Your master password is never stored. Only the path of the last database and key file is remembered (`~/.config/velkey/config.json`).
 - Databases are saved as **KDBX 4.1**. KDBX 3.1 files are upgraded on first save. KeePass 2.35+, KeePassXC and current mobile apps all read KDBX 4.
 - **Not supported:** Twofish databases (a KeePass plugin cipher), KeePass 1.x `.kdb` files, KeePass plugins.
-- Copied passwords are marked as secret, so clipboard managers like Klipper don't save them in their history, and they're wiped when the timer runs out.
+- Copied passwords are marked as secret, so clipboard managers like Klipper don't save them in their history. When the timer runs out, the clipboard is left blank (not refilled from the clipboard history).
 - Found a security problem? Please report it privately. See [SECURITY.md](SECURITY.md).
 
 ---

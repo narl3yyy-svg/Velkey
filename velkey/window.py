@@ -1969,12 +1969,10 @@ class MainWindow(Gtk.ApplicationWindow):
             Gtk.selection_add_target(w, sel, Gdk.Atom.intern(t, False), i)
 
     def _clip_get(self, w, data, info, _time):
-        if self._clip_text is None:
-            return
         if self._CLIP_TARGETS[info] == "x-kde-passwordManagerHint":
             data.set(data.get_target(), 8, b"secret")
         else:
-            data.set_text(self._clip_text, -1)
+            data.set_text(self._clip_text or "", -1)  # blank once cleared
 
     def _clip_lost(self, *_):
         # something else was copied: it is not ours to clear any more
@@ -1995,8 +1993,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self._clip_deadline = 0
         self.status_right.set_text(self._hotkey_text())
         if getattr(self, "_clip_owned", False):
-            self._clip_owned = False
-            Gtk.selection_owner_set(None, Gdk.SELECTION_CLIPBOARD, Gtk.get_current_event_time())
+            # Replace the password with blank text (still marked secret) instead of
+            # emptying the clipboard: an empty clipboard makes Klipper put back the
+            # newest item of its history, which would then be pasted.
+            self._clip_own("")
+            self._clip_text = None
         else:
             # fallback path (plain set_text): clear only if it still holds our text
             cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
