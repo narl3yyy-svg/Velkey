@@ -584,11 +584,16 @@ class PortalTyper:
     def __init__(self, config):
         self.paste_hook = None  # set by AutoTyper: puts text on the clipboard (main thread)
         self.config = config
-        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        try:
+            self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        except GLib.Error:
+            self.bus = None  # no session bus (e.g. no desktop session): not available
         self.session = None
         self._closed_sub = None
 
     def available(self):
+        if self.bus is None:
+            return False
         try:
             r = self.bus.call_sync(self.DEST, self.PATH, "org.freedesktop.DBus.Properties", "Get",
                                    GLib.Variant("(ss)", (self.IFACE, "AvailableDeviceTypes")),

@@ -11,6 +11,7 @@ The version is set in one place, [`velkey/__init__.py`](velkey/__init__.py). To 
 - **Touch ID unlock on macOS.** After you unlock a database with its password, Velkey offers once to remember it: the password goes into this Mac's Keychain and the unlock screen then asks for your fingerprint (typing the password always works too). *File → Forget Touch ID for This Database* turns it off. Needs Apple's command-line tools, which Homebrew already installs; `runmac.sh` / `installmac.sh` build the small helper.
 
 ### Fixed
+- Auto-Type no longer crashes on a system without a desktop message bus (D-Bus); it reports that typing is not available instead. This also made the GitHub test run fail since 0.1.3.
 - macOS (and any synced folder): new and edited entries were sometimes not saved automatically. iCloud Drive and other sync tools touch the database file's timestamp, which Velkey took for "changed by another program" and silently skipped the save. Velkey now compares the file's contents; if another program really changed it, you get a clear notification instead.
 
 ## [0.1.5] – 2026-11-27
