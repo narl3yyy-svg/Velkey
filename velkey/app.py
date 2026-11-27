@@ -12,7 +12,7 @@ from gi.repository import Gio, GLib, Gtk  # noqa: E402
 from . import autotype, theme  # noqa: E402
 from .config import Config  # noqa: E402
 
-VERSION = "1.0.0"
+from . import __version__ as VERSION  # the one place the version is set: velkey/__init__.py
 APP_ID = "io.github.velkey"
 
 
@@ -34,6 +34,13 @@ class VelkeyApp(Gtk.Application):
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
+        # "quit" action: on macOS the app menu's Quit and ⌘Q use it, so quitting
+        # asks about unsaved changes and remembers the session like Ctrl+Q does
+        quit_action = Gio.SimpleAction.new("quit", None)
+        quit_action.connect("activate", lambda *_: self.window.quit_app() if self.window else self.quit())
+        self.add_action(quit_action)
+        if sys.platform == "darwin":
+            self.set_accels_for_action("app.quit", ["<Primary>q"])  # ⌘Q
         if sys.platform == "darwin" and os.environ.get("VELKEY_MAC_ICON"):
             set_mac_dock_icon(os.environ["VELKEY_MAC_ICON"])
         self.config = Config()
@@ -123,6 +130,17 @@ class VelkeyApp(Gtk.Application):
             path = f.get_path()
             if path and self.window is not None:
                 self.window.open_path(path)
+
+    def do_shutdown(self):
+        """Every way of ending (also macOS Dock → Quit, log out): keep the session."""
+        if self.window is not None:
+            try:
+                self.window.remember_session()
+            except Exception:
+                pass
+        if self.focus is not None:
+            self.focus.stop()
+        Gtk.Application.do_shutdown(self)
 
     def do_command_line(self, cmdline):
         args = cmdline.get_arguments()[1:]

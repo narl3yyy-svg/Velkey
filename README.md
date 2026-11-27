@@ -4,18 +4,19 @@
 
 # Velkey
 
-**A fast, native password manager for Linux that opens your KeePass databases.**
+**A fast, native password manager for Linux and macOS that opens your KeePass databases.**
 
 Your existing `.kdbx` files · Global Auto-Type · TOTP codes · No account, no cloud
 
-[![Platform](https://img.shields.io/badge/platform-Linux-1b1f26?style=for-the-badge&logo=linux&logoColor=white)](#-install)
+[![Version](https://img.shields.io/github/v/tag/narl3yyy-svg/Velkey?label=version&style=for-the-badge&color=6c8cff)](CHANGELOG.md)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-1b1f26?style=for-the-badge&logo=linux&logoColor=white)](#-install)
 [![KDBX](https://img.shields.io/badge/KDBX-3.1_%2F_4.x-6c8cff?style=for-the-badge)](#-security)
 [![Wayland](https://img.shields.io/badge/Wayland%20%2B%20X11-ready-3ddc97?style=for-the-badge)](#-auto-type)
 [![License](https://img.shields.io/badge/license-GPL--3.0-8a92a3?style=for-the-badge)](LICENSE)
 
 <img src="docs/screenshot.png" alt="Velkey main window" width="880">
 
-[Install](#-install) · [Quick start](#-quick-start) · [TOTP](#-two-factor-codes-totp) · [Auto-Type](#-auto-type) · [Shortcuts](#%EF%B8%8F-keyboard-shortcuts) · [FAQ](#-faq)
+[Install](#-install) · [Quick start](#-quick-start) · [TOTP](#-two-factor-codes-totp) · [Auto-Type](#-auto-type) · [Shortcuts](#%EF%B8%8F-keyboard-shortcuts) · [FAQ](#-faq) · [What's new](CHANGELOG.md)
 
 </div>
 
@@ -157,7 +158,7 @@ Deleting by accident never reaches the file on its own: automatic saves after ad
 
 After you copy something, Velkey **steps back**: the window you were using (e.g. your browser) comes to the front, so you can paste right away. On KDE it picks the window on the same monitor; turn it off in *Tools → Options → Security*.
 
-Anything you copy is **wiped from the clipboard after 12 seconds** (change it in *Tools → Options*). Velkey remembers the databases you had open, but never your passwords.
+Anything you copy is **wiped from the clipboard after 12 seconds** (change it in *Tools → Options*). Velkey remembers the databases you had open and the group and entry you were on in each, but never your passwords.
 
 ---
 

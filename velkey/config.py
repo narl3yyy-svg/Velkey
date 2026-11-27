@@ -5,6 +5,7 @@ DEFAULTS = {
     "recent_files": [],
     "last_file": "",
     "last_keyfiles": {},
+    "positions": {},          # database path -> {"group": uuid, "entry": uuid}
     "window": [1180, 720],
     "maximized": False,
     "pane_groups": 250,

@@ -858,6 +858,9 @@ class MainWindow(Gtk.ApplicationWindow):
         return False
 
     def load_db(self, db):
+        # read where the user was *before* anything is selected below
+        pos = dict(self.config.get("positions", {}).get(db.path or "", {}))
+        self._restoring = True
         if self.doc.db is not db:
             self.doc.pending, self.doc.dirty = [], False
         self.db = db
@@ -868,14 +871,45 @@ class MainWindow(Gtk.ApplicationWindow):
         self.current_group = None
         self.stack.set_visible_child_name("db")
         self.refresh_all()
-        # select last selected group
-        last = db.meta_get("LastSelectedGroup")
-        if last:
-            self._select_group_uuid(last)
+        # back to where the user was: remembered by Velkey (even without saving),
+        # else the group saved in the file (also written by KeePass / KeePassXC)
+        for uid in (pos.get("group"), db.meta_get("LastSelectedGroup")):
+            if uid and self._select_group_uuid(uid):
+                break
         if self.selected_group() is None:
             self._select_group_uuid(db.root_group.uuid)
+        self._restoring = False
+        if pos.get("entry"):
+            self._select_entry_uuid(pos["entry"])
+        self._remember_position()
         self.entry_view.grab_focus()
         self.update_actions()
+
+    MAX_POSITIONS = 30
+
+    def _remember_position(self):
+        """Note the group / entry on screen for this database (in Velkey's
+        settings, written when Velkey closes or locks)."""
+        if (self.db is None or not self.db_path or self._suspend_group_sel
+                or getattr(self, "_restoring", False) or getattr(self, "_closing", False)):
+            return
+        g = self.current_group if self.filter_mode is None else None
+        e = self.selected_entry()
+        positions = self.config.data.setdefault("positions", {})
+        positions.pop(self.db_path, None)  # newest last
+        positions[self.db_path] = {"group": g.uuid if g is not None else "", "entry": e.uuid if e else ""}
+        while len(positions) > self.MAX_POSITIONS:
+            positions.pop(next(iter(positions)))
+
+    def _select_entry_uuid(self, uid):
+        for row in self.entry_store:
+            if row[C_OBJ].uuid == uid:
+                sel = self.entry_view.get_selection()
+                sel.unselect_all()
+                sel.select_iter(row.iter)
+                self.entry_view.scroll_to_cell(row.path, None, False, 0, 0)
+                return True
+        return False
 
     def open_database(self):
         fc = Gtk.FileChooserDialog(title="Open Database", transient_for=self, action=Gtk.FileChooserAction.OPEN)
@@ -1365,6 +1399,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 return False
         if start is not self.doc and start.page in self._docs:
             self._switch_to(start)
+        self.config.save()  # positions etc. survive even if Velkey is killed while locked
         return True
 
     def _lock_current(self, force=False):
@@ -1410,12 +1445,19 @@ class MainWindow(Gtk.ApplicationWindow):
                     return
         if start.page in self._docs:
             self._switch_to(start)
+        self.remember_session()
+        self.clear_clipboard()
+        self.app.quit()
+
+    def remember_session(self):
+        """Open tabs, current database, positions and window size -> settings file."""
+        if not getattr(self, "_closing", False):
+            self._remember_position()
+            self._closing = True  # widgets being torn down must not overwrite it
         self.config.data["open_files"] = [d.path for d in self.docs() if d.path]
         if self.db_path:
             self.config.data["last_file"] = self.db_path
-        self.clear_clipboard()
-        self._save_geometry()
-        self.app.quit()
+        self._save_geometry()  # also writes the settings file
 
     def _on_delete(self, *_):
         if self.config.get("close_to_tray") and self.app.tray and self.app.tray.ok:
@@ -1542,6 +1584,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 self._apply_column_visibility()
             self.refresh_entries()
         self.update_actions()
+        self._remember_position()
 
     def _group_button(self, view, ev):
         if ev.button == 3 and self.db is not None:
@@ -1738,6 +1781,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.update_actions()
         self._default_status()
         self._show_details(self.selected_entry())
+        self._remember_position()
 
     def _otp_cell(self, col, cell, model, it, data):
         e = model[it][C_OBJ]

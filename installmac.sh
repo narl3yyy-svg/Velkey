@@ -50,7 +50,7 @@ velkey_mac_check_openssl "$SRC" || fail "This OpenSSL has no Argon2 (needs 3.2 o
 ok "Homebrew packages: ${VELKEY_MAC_PACKAGES[*]}"
 ok "Python: $PY"
 
-VERSION="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' "$SRC/velkey/app.py")"
+VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$SRC/velkey/__init__.py")"
 
 # ------------------------------------------------------------- app bundle
 say "Installing Velkey $VERSION to $APP"
