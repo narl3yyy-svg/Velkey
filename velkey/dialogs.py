@@ -359,7 +359,7 @@ class IconPicker(Gtk.Dialog):
     def __init__(self, parent, db, icon_id, custom_uuid):
         super().__init__(title="Choose Icon", transient_for=parent, modal=True)
         self.db = db
-        self.set_default_size(560, 460)
+        self.set_default_size(560, -1)  # height: tall enough for every icon (see below)
         self.add_button("Cancel", Gtk.ResponseType.CANCEL)
         b = self.add_button("Select", Gtk.ResponseType.OK)
         b.get_style_context().add_class("suggested-action")
@@ -389,6 +389,9 @@ class IconPicker(Gtk.Dialog):
         box.pack_start(l, False, False, 6)
         self.cust = Gtk.FlowBox()
         self.cust.set_max_children_per_line(14)
+        self.cust.set_min_children_per_line(14)
+        self.cust.set_homogeneous(True)      # same compact grid as the standard icons
+        self.cust.set_valign(Gtk.Align.START)
         self.cust.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.cust.set_activate_on_single_click(False)  # click selects (e.g. to delete), double-click chooses
         self.cust.connect("child-activated", lambda *_: self.response(Gtk.ResponseType.OK))
@@ -396,6 +399,10 @@ class IconPicker(Gtk.Dialog):
         self._fill_custom(custom_uuid)
         sw = Gtk.ScrolledWindow()
         sw.set_vexpand(True)
+        sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        # open showing every custom icon; only scroll when they would not fit on the screen
+        sw.set_propagate_natural_height(True)
+        sw.set_max_content_height(self._max_icon_area(parent))
         sw.add(self.cust)
         sw.get_style_context().add_class("plain")
         box.pack_start(sw, True, True, 0)
@@ -414,6 +421,17 @@ class IconPicker(Gtk.Dialog):
         self.get_content_area().add(box)
         self.show_all()
         self._update_delete()
+
+    @staticmethod
+    def _max_icon_area(parent):
+        """Tallest the custom-icon area may get: the screen minus the rest of the window."""
+        try:
+            display = Gdk.Display.get_default()
+            mon = display.get_monitor_at_window(parent.get_window()) if parent and parent.get_window() \
+                else display.get_primary_monitor() or display.get_monitor(0)
+            return max(200, mon.get_workarea().height - 420)
+        except Exception:
+            return 500
 
     def _fill_custom(self, sel=None):
         for c in self.cust.get_children():
