@@ -1095,6 +1095,59 @@ class MainWindow(Gtk.ApplicationWindow):
             g = self.db.root_group
         return g
 
+    def _skip_duplicates(self, entries, db, db_name):
+        """Warn when `db` already has some of `entries`. Returns the entries to
+        copy (all, or only the new ones), or None if the user cancelled."""
+        dups = kdbx.find_duplicates(entries, db)
+        if not dups:
+            return entries
+        n, total = len(dups), len(entries)
+        d = dialogs.make_dialog(self, "Already in this database", ok_label=None, width=560)  # has Cancel
+        d.add_button("Import All Anyway" if n < total else "Import Anyway", 1)
+        if n < total:
+            skip = d.add_button("Skip Duplicates", Gtk.ResponseType.OK)
+            skip.get_style_context().add_class("suggested-action")
+            d.set_default_response(Gtk.ResponseType.OK)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.set_border_width(14)
+        head = Gtk.Label(xalign=0)
+        head.set_line_wrap(True)
+        if n == total:
+            text = ("<b>“%s” already has %s.</b>" %
+                    (GLib.markup_escape_text(db_name), "this entry" if n == 1 else "all %d of these entries" % n))
+        else:
+            text = ("<b>%d of the %d entries are already in “%s”.</b>\nSkip them and add only the %d new %s?" %
+                    (n, total, GLib.markup_escape_text(db_name), total - n,
+                     "entry" if total - n == 1 else "entries"))
+        head.set_markup(text)
+        box.pack_start(head, False, False, 0)
+        lines = []
+        for e, have, same in dups:
+            where = have.parent.path() if have.parent is not None else db_name
+            what = "same password" if same else "same entry, but different details (maybe an older or newer password)"
+            lines.append("•  <b>%s</b>  %s\n    <span alpha='70%%'>in %s · %s</span>" % (
+                GLib.markup_escape_text(e.title or "(no title)"),
+                GLib.markup_escape_text("(%s)" % e.username if e.username else ""),
+                GLib.markup_escape_text(where), what))
+        lst = Gtk.Label(xalign=0, yalign=0)
+        lst.set_markup("\n".join(lines))
+        lst.set_selectable(True)
+        sw = Gtk.ScrolledWindow()
+        sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        sw.set_min_content_height(min(60 + 44 * n, 260))
+        sw.add(lst)
+        box.pack_start(sw, True, True, 0)
+        d.get_content_area().add(box)
+        d.show_all()
+        r = d.run()
+        d.destroy()
+        if r == 1:
+            return entries
+        if r == Gtk.ResponseType.OK:
+            skip = {id(e.el) for e, _h, _s in dups}
+            return [e for e in entries if id(e.el) not in skip]
+        return None
+
     def export_entries(self):
         """Save the selected entries to a new, password-protected .kdbx file."""
         entries = self.selected_entries()
@@ -1184,13 +1237,18 @@ class MainWindow(Gtk.ApplicationWindow):
             dialogs.message(self, "Nothing to import", "The file has no entries.")
             return
         target = self._target_group()
+        entries = self._skip_duplicates(entries, self.db, self._doc_name(self.doc))
+        if not entries:
+            if entries is not None:
+                self.set_status("Nothing imported", 6)
+            return
         copies = kdbx.copy_entries(entries, target)
         self.changed()
-        self.set_status("Imported %d %s into “%s”" % (len(copies), "entry" if len(copies) == 1 else "entries",
-                                                    target.name), 8)
         if len(copies) == 1:
             self._select_group_uuid(copies[0].parent.uuid)
             self._select_entry_el(copies[0].el)
+        self.set_status("Imported %d %s into “%s”" % (len(copies), "entry" if len(copies) == 1 else "entries",
+                                                    target.name), 8)
 
     def copy_to_other_database(self):
         others = [d for d in self.docs() if d is not self.doc and d.db is not None]
@@ -1217,6 +1275,9 @@ class MainWindow(Gtk.ApplicationWindow):
     def copy_to_database(self, doc):
         entries = self.selected_entries()
         if not entries or doc.db is None or doc is self.doc:
+            return
+        entries = self._skip_duplicates(entries, doc.db, self._doc_name(doc))
+        if not entries:
             return
         copies = kdbx.copy_entries(entries, doc.db.root_group)
         self._save_other(doc)

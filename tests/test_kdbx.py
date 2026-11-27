@@ -103,6 +103,27 @@ class TestCopyExportImport(TempDir):
         b.save()
         self.assertEqual(len(kdbx.Database.open(self.path("b.kdbx"), "demo-master").all_entries()), 2)
 
+    def test_find_duplicates(self):
+        b = fast_db(self.path("b.kdbx"))
+        same = demo_entry(group(b, "General"), password="demo-password-2")  # identical details
+        other = demo_entry(group(self.a, "Internet"), title="Demo Forum", user="alex_demo")
+        dups = kdbx.find_duplicates([self.e, other], b)
+        self.assertEqual([(d[0].title, d[1].uuid, d[2]) for d in dups], [("Example Shop", same.uuid, True)])
+
+    def test_same_entry_with_new_password_is_flagged(self):
+        b = fast_db(self.path("b.kdbx"))
+        [c] = kdbx.copy_entries([self.e], b.root_group)
+        self.e.password = "demo-password-3"  # changed after it was copied
+        [(_e, have, same)] = kdbx.find_duplicates([self.e], b)
+        self.assertIs(same, False)
+        self.assertEqual(have.uuid, c.uuid)
+
+    def test_recycle_bin_does_not_count(self):
+        b = fast_db(self.path("b.kdbx"))
+        [c] = kdbx.copy_entries([self.e], b.root_group)
+        c.move_to(b.recycle_bin(create=True))
+        self.assertEqual(kdbx.find_duplicates([self.e], b), [])
+
     def test_original_untouched(self):
         b = fast_db(self.path("b.kdbx"))
         [c] = kdbx.copy_entries([self.e], b.root_group)

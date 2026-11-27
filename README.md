@@ -126,6 +126,8 @@ Open another database (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and it gets **its own tab**
 | Open both, go to the tab with the entry, right-click it → **Copy to Database** → pick the other database | Highlight one or more entries (<kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click, or <kbd>Ctrl</kbd>+<kbd>A</kbd>), right-click → **Export Selected Entries…** Velkey saves them in one small **encrypted** `.kdbx` file with a password you choose |
 | | In the other database: right-click → **Import Entries…** (also in the *Entry* and *File* menus), pick that file and type its password. The entries land in the selected group |
 
+If the other database **already has** some of the entries (same title, user name, password and URL, or the same entry with an older or newer password), Velkey lists them and lets you **skip the duplicates**, import anyway, or cancel.
+
 Copies keep everything: password, 2FA code, attachments, icon, Auto-Type rules and history. The original stays where it was. To move it instead, delete the original after copying. The exported file is a normal KeePass database, so KeePass and KeePassXC can open it too.
 
 ---

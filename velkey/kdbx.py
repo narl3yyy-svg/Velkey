@@ -1451,3 +1451,24 @@ def export_entries(entries, path, password, keyfile=None, name="Exported entries
         copy_entry(e, top)
     db.save()
     return db
+
+
+def find_duplicates(entries, db):
+    """Which of `entries` the database `db` already has (recycle bin ignored).
+
+    Returns [(entry, existing, same)]: `same` is True when title, user name,
+    password and URL are identical, False when it is the same entry (same
+    UUID) whose details differ, e.g. an older or newer password."""
+    def key(e):
+        return (e.title.strip(), e.username.strip(), e.password, e.url.strip())
+    have = db.all_entries()
+    by_key = {key(x): x for x in have}
+    by_uuid = {x.uuid: x for x in have}
+    out = []
+    for e in entries:
+        hit = by_key.get(key(e))
+        if hit is not None:
+            out.append((e, hit, True))
+        elif e.uuid in by_uuid:
+            out.append((e, by_uuid[e.uuid], False))
+    return out
