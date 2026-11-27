@@ -482,7 +482,12 @@ class Database:
         path = path or self.path
         data = self.serialize()
         tmp = path + ".tmp-velkey"
-        with open(tmp, "wb") as f:
+        try:
+            os.unlink(tmp)  # never write through a leftover file or link
+        except FileNotFoundError:
+            pass
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # private from the start
+        with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())

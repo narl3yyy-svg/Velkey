@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    # Debian 13 ships OpenSSL 3.5, which Velkey needs for Argon2
+    container: debian:trixie
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git python3 python3-gi gir1.2-gtk-3.0 gir1.2-atspi-2.0
+      - uses: actions/checkout@v5
+      - name: Byte-compile
+        run: python3 -m compileall -q velkey tests tools
+      - name: Run tests
+        run: python3 -W error::ResourceWarning -m unittest discover -s tests -t . -v
+
+  privacy:
+    name: No personal data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Scan tracked files
+        run: python3 tools/privacy_check.py --tree

@@ -160,7 +160,7 @@ Velkey minimizes itself and types into the window you were in before. It types *
 
 ### How Velkey knows it's the right site
 
-In a **browser**, Velkey reads the page's real **URL** from the browser's own session file, so it knows the actual site even when the window just says *"Gmail - Helium"*. This works with Chrome, Chromium, Helium, Brave, Vivaldi, Edge, Opera, Firefox, LibreWolf and Zen (including Flatpak and Snap). Then an entry matches when:
+In a **browser**, Velkey reads the page's real **URL** from the browser's own session file, so it knows the actual site even when the window just says *"Example Mail - Helium"*. This works with Chrome, Chromium, Helium, Brave, Vivaldi, Edge, Opera, Firefox, LibreWolf and Zen (including Flatpak and Snap). Then an entry matches when:
 
 - its **URL** is on the same site: an entry for `https://accounts.google.com` ↔ a tab on `mail.google.com`
 - one of its **window rules** (Edit Entry → *Auto-Type* tab) fits. A rule that is a web address is checked against the page URL, e.g. `https://login.example.com/users/*` (KeePass's `??:URL:https://…` form works too)
@@ -266,6 +266,19 @@ On **Wayland**, the first Auto-Type asks once for permission to send keyboard in
 - Your master password is never stored. Only the path of the last database and key file is remembered (`~/.config/velkey/config.json`).
 - Databases are saved as **KDBX 4.1**. KDBX 3.1 files are upgraded on first save. KeePass 2.35+, KeePassXC and current mobile apps all read KDBX 4.
 - **Not supported:** Twofish databases (a KeePass plugin cipher), KeePass 1.x `.kdb` files, KeePass plugins.
+- Copied passwords are marked as secret, so clipboard managers like Klipper don't save them in their history, and they're wiped when the timer runs out.
+- Found a security problem? Please report it privately. See [SECURITY.md](SECURITY.md).
+
+---
+
+## 🛠 Development
+
+```bash
+python3 -m unittest discover -s tests -t .   # run the tests (no extra packages needed)
+sh tools/install-hooks.sh                    # block pushes that contain personal data
+```
+
+The tests check the encryption against published test vectors (NIST, RFC 8439, RFC 9106, RFC 6238), round-trip real database files, and cover the Auto-Type safety rules. GitHub runs them on every push, together with a CodeQL security scan and a scan for personal data. Use demo data (`alex@example.com`, `example.com`) in tests, docs and screenshots.
 
 ---
 

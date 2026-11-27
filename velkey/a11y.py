@@ -296,6 +296,11 @@ class FocusClient:
                 p.wait(1)
             except Exception:
                 pass
+            for f in (p.stdin, p.stdout):
+                try:
+                    f.close()
+                except Exception:
+                    pass
 
     def stop(self):
         self._kill()

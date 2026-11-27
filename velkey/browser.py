@@ -3,7 +3,7 @@
 Browsers on Linux do not put the URL in the window title, and Wayland gives
 no way to read another app's address bar. Every mainstream browser however
 keeps a live session file listing each tab's title and URL, so the window
-title ("Gmail - Helium") can be mapped back to the page URL.
+title ("Example Mail - Helium") can be mapped back to the page URL.
 
   * Chromium family (Chrome, Chromium, Helium, Brave, Vivaldi, Edge, Opera…):
     <profile>/Sessions/Session_*   (SNSS command log, written ~2.5 s after a
@@ -192,7 +192,7 @@ BROWSERS = ("helium", "chrome", "chromium", "brave", "vivaldi", "edge", "opera",
 
 
 def _page_titles(window_title):
-    """'Gmail - Helium' -> ['Gmail - Helium', 'Gmail']. Only a trailing browser
+    """'Example Mail - Helium' -> ['Example Mail - Helium', 'Example Mail']. Only a trailing browser
     name is removed, so 'Login - Evil Site - Helium' never becomes 'Login'."""
     t = (window_title or "").strip()
     out = [t] if t else []
