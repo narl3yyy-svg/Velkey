@@ -106,7 +106,27 @@ Velkey then appears in your app menu and `.kdbx` files open in it on double-clic
 | Add / edit an entry | <kbd>Ctrl</kbd>+<kbd>I</kbd> / <kbd>Enter</kbd> |
 | Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> |
 
-Anything you copy is **wiped from the clipboard after 12 seconds** (change it in *Tools → Options*). Velkey remembers the last database you opened, but never your password.
+Anything you copy is **wiped from the clipboard after 12 seconds** (change it in *Tools → Options*). Velkey remembers the databases you had open, but never your passwords.
+
+---
+
+## 🗂 Several databases at once
+
+Open another database (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and it gets **its own tab**. The databases you already have open stay open.
+
+- Switch tabs with a click, <kbd>Ctrl</kbd>+<kbd>Tab</kbd>, or <kbd>Ctrl</kbd>+<kbd>Page Down</kbd> / <kbd>Page Up</kbd>. Drag a tab to reorder it.
+- **Close** one with its **×** or <kbd>Ctrl</kbd>+<kbd>W</kbd>. **Lock** (<kbd>Ctrl</kbd>+<kbd>L</kbd>) locks all of them.
+- Global Auto-Type looks in **every unlocked tab**.
+- Next time you start Velkey, the same tabs come back (locked).
+
+### Move an entry to another database
+
+| Both databases on this computer | Taking it to another computer or person |
+|---|---|
+| Open both, go to the tab with the entry, right-click it → **Copy to Database** → pick the other database | Select the entry → **Entry → Export Selected Entries…** Velkey saves it in a small **encrypted** `.kdbx` file with a password you choose |
+| | In the other database: **File → Import Entries from KeePass File…**, pick that file and type its password. The entry lands in the selected group |
+
+Copies keep everything: password, 2FA code, attachments, icon, Auto-Type rules and history. The original stays where it was. To move it instead, delete the original after copying. The exported file is a normal KeePass database, so KeePass and KeePassXC can open it too.
 
 ---
 
@@ -222,7 +242,8 @@ On **Wayland**, the first Auto-Type asks once for permission to send keyboard in
 | <kbd>Ctrl</kbd>+<kbd>U</kbd> | Open URL | | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Search |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd> | Copy URL | | <kbd>Ctrl</kbd>+<kbd>G</kbd> | Password generator |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save | | <kbd>Ctrl</kbd>+<kbd>L</kbd> | Lock workspace |
-| <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>Ctrl</kbd>+<kbd>N</kbd> | Open / new database | | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Quit |
+| <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>Ctrl</kbd>+<kbd>N</kbd> | Open / new database (new tab) | | <kbd>Ctrl</kbd>+<kbd>Q</kbd> | Quit |
+| <kbd>Ctrl</kbd>+<kbd>Tab</kbd> | Next database tab | | <kbd>Ctrl</kbd>+<kbd>W</kbd> | Close database tab |
 
 ---
 

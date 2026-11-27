@@ -107,6 +107,11 @@ notebook > header tab:hover { color: @pk_text; box-shadow: inset 0 -2px alpha(@p
 notebook > header tab:checked { color: @pk_text; box-shadow: inset 0 -2px @pk_accent; }
 notebook > header tab label { color: inherit; font-weight: 600; }
 notebook > stack:not(:only-child) { background: @pk_bg; }
+notebook.db-tabs > header tab { padding: 4px 6px 4px 12px; }
+notebook.db-tabs > header tab button { padding: 2px; min-height: 0; min-width: 0; border-radius: 6px; background: none; border: none; box-shadow: none; }
+notebook.db-tabs > header tab button:hover { background: @pk_hover; }
+notebook.db-tabs > header tab image { color: @pk_dim; }
+notebook.db-tabs > stack { min-height: 0; }
 
 frame > border, .frame { border: 1px solid @pk_border; border-radius: 8px; }
 list, listbox { background: @pk_surface; color: @pk_text; }

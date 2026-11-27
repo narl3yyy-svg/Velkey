@@ -23,14 +23,33 @@ TARGET_GROUP = "VELKEY_GROUP"
 C_OBJ, C_TITLE, C_USER, C_PASS, C_URL, C_NOTES, C_ICON, C_FG, C_BG, C_STRIKE, C_MOD, C_GROUP = range(12)
 
 
+class _Doc:
+    """One database tab: its file, and the database once unlocked."""
+
+    def __init__(self, path=None):
+        self.path = path
+        self.db = None
+        self.keyfile = None
+        self.group_uuid = None   # view state, restored when switching back
+        self.filter = None
+        self.search = ""
+        self.page = None
+        self.label = None
+        self.icon = None
+
+
 class MainWindow(Gtk.ApplicationWindow):
+    # the current tab's database; all other code works on these
+    db = property(lambda s: s.doc.db, lambda s, v: setattr(s.doc, "db", v))
+    db_path = property(lambda s: s.doc.path, lambda s, v: setattr(s.doc, "path", v))
+    keyfile = property(lambda s: s.doc.keyfile, lambda s, v: setattr(s.doc, "keyfile", v))
+
     def __init__(self, app):
         super().__init__(application=app, title=APP_NAME)
         self.app = app
         self.config = app.config
-        self.db = None
-        self.db_path = None
-        self.keyfile = None
+        self._docs = {}  # notebook page -> _Doc
+        self.doc = _Doc()
         self.current_group = None
         self.filter_mode = None      # None | ("search", terms) | ("special", name)
         self._clip_text = None
@@ -55,6 +74,13 @@ class MainWindow(Gtk.ApplicationWindow):
         root.pack_start(self._build_menubar(), False, False, 0)
         self.toolbar = self._build_toolbar()
         root.pack_start(self.toolbar, False, False, 0)
+        self.tabs = Gtk.Notebook()
+        self.tabs.set_scrollable(True)
+        self.tabs.set_show_border(False)
+        self.tabs.get_style_context().add_class("db-tabs")
+        self.tabs.connect("switch-page", self._on_switch_tab)
+        self.tabs.connect("page-reordered", lambda *_: None)
+        root.pack_start(self.tabs, False, False, 0)
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.stack.set_transition_duration(120)
@@ -75,7 +101,169 @@ class MainWindow(Gtk.ApplicationWindow):
         self.toolbar.set_visible(self.config.get("show_toolbar"))
         self.details_box.set_visible(self.config.get("show_details"))
         self._apply_column_visibility()
-        self.show_unlock(self.config.get("last_file") if self.config.get("open_last") else None)
+        self._add_tab(self.doc)
+        self._restore_tabs()
+
+    # ================================================================= tabs
+    def _add_tab(self, doc):
+        page = Gtk.Box()
+        head = Gtk.Box(spacing=6)
+        doc.icon = Gtk.Image.new_from_icon_name("system-lock-screen-symbolic", Gtk.IconSize.MENU)
+        doc.label = Gtk.Label()
+        doc.label.set_ellipsize(Pango.EllipsizeMode.END)
+        doc.label.set_max_width_chars(28)
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.MENU)
+        close.set_relief(Gtk.ReliefStyle.NONE)
+        close.set_can_focus(False)
+        close.set_tooltip_text("Close this database (Ctrl+W)")
+        close.connect("clicked", lambda *_: self._close_tab(doc))
+        head.pack_start(doc.icon, False, False, 0)
+        head.pack_start(doc.label, True, True, 0)
+        head.pack_start(close, False, False, 0)
+        head.show_all()
+        page.show()
+        doc.page = page
+        self._docs[page] = doc
+        n = self.tabs.append_page(page, head)
+        self.tabs.set_tab_reorderable(page, True)
+        self._update_tab(doc)
+        self._update_tab_bar()
+        return n
+
+    def docs(self):
+        """Open tabs, in the order shown."""
+        return [self._docs[self.tabs.get_nth_page(i)] for i in range(self.tabs.get_n_pages())]
+
+    def _update_tab_bar(self):
+        self.tabs.set_visible(self.tabs.get_n_pages() > 1)
+
+    def _update_tab(self, doc):
+        if doc.label is None:
+            return
+        if doc.db is not None:
+            name = doc.db.name or os.path.splitext(os.path.basename(doc.db.path or "New Database"))[0]
+            text = name + ("*" if doc.db.modified else "")
+        elif doc.path:
+            text = os.path.splitext(os.path.basename(doc.path))[0]
+        else:
+            text = "Start"
+        doc.label.set_text(text)
+        doc.icon.set_visible(doc.db is None and bool(doc.path))
+        tip = (doc.path or "").replace(os.path.expanduser("~"), "~")
+        if doc.db is None and doc.path:
+            tip += "\nLocked"
+        doc.label.get_parent().set_tooltip_text(tip or None)
+
+    def _remember_view(self):
+        d = self.doc
+        d.group_uuid = self.current_group.uuid if self.current_group is not None else None
+        d.filter = self.filter_mode
+        d.search = self.search.get_text()
+
+    def _on_switch_tab(self, nb, page, num):
+        doc = self._docs.get(page)
+        if doc is None or doc is self.doc:
+            return
+        if self.doc.page in self._docs:
+            self._remember_view()
+        self.doc = doc
+        self._show_doc()
+
+    def _show_doc(self):
+        d = self.doc
+        if d.db is None:
+            self.show_unlock(d.path)
+            return
+        group, flt, search = d.group_uuid, d.filter, d.search
+        self.current_group = None
+        self.filter_mode = None
+        self._suspend_group_sel = True
+        self.group_store.clear()  # rows of the previous tab's database
+        self.entry_store.clear()
+        self._suspend_group_sel = False
+        self.search.set_text("")
+        self.load_db(d.db)
+        if group:
+            self._select_group_uuid(group)
+        if search:
+            self.search.set_text(search)
+        elif flt and flt[0] == "special":
+            self.special(flt[1])
+
+    def _switch_to(self, doc):
+        n = self.tabs.page_num(doc.page)
+        if n >= 0 and doc is not self.doc:
+            self.tabs.set_current_page(n)
+
+    def _new_tab(self):
+        doc = _Doc()
+        n = self._add_tab(doc)
+        self.tabs.set_current_page(n)
+        return doc
+
+    def _find_doc(self, path):
+        for d in self.docs():
+            if path and d.path and (d.path == path or (os.path.exists(d.path) and os.path.exists(path)
+                                                        and os.path.samefile(d.path, path))):
+                return d
+        return None
+
+    def _make_room(self):
+        """Use the current tab if it is empty, otherwise open a new one."""
+        if self.doc.db is not None or self.doc.path:
+            self._new_tab()
+
+    def _close_tab(self, doc):
+        self._switch_to(doc)
+        self.close_database()
+
+    def next_tab(self):
+        n = self.tabs.get_n_pages()
+        if n > 1:
+            self.tabs.set_current_page((self.tabs.get_current_page() + 1) % n)
+
+    def prev_tab(self):
+        n = self.tabs.get_n_pages()
+        if n > 1:
+            self.tabs.set_current_page((self.tabs.get_current_page() - 1) % n)
+
+    def _any_unlocked(self):
+        return any(d.db is not None for d in self.docs())
+
+    def _restore_tabs(self):
+        """Reopen the databases that were open last time (locked)."""
+        files = []
+        if self.config.get("open_last"):
+            files = [p for p in self.config.get("open_files", []) if p and os.path.exists(p)]
+            last = self.config.get("last_file")
+            if last and os.path.exists(last) and last not in files:
+                files.append(last)
+        if not files:
+            self.show_unlock(None)
+            return
+        self.show_unlock(files[0])
+        for p in files[1:]:
+            self._new_tab()
+            self.show_unlock(p)
+        last = self._find_doc(self.config.get("last_file"))
+        if last is not None:
+            self._switch_to(last)
+
+    def _save_other(self, doc):
+        """Save a database that is open in a tab other than the current one."""
+        db = doc.db
+        if db is None or not db.path or not self.config.get("auto_save"):
+            return
+        try:
+            if os.path.exists(db.path) and db.file_mtime and abs(os.path.getmtime(db.path) - db.file_mtime) > 0.001:
+                return  # changed on disk: let the user decide when they open the tab
+            if self.config.get("backup_on_save") and db.path not in self._backed_up and os.path.exists(db.path):
+                shutil.copy2(db.path, db.path + ".bak")
+                self._backed_up.add(db.path)
+            db.save()
+        except Exception as e:
+            self.set_status("Could not save %s: %s" % (os.path.basename(db.path), e), 8)
+        self._update_tab(doc)
 
     # ================================================================ build
     def _menu(self, bar, title, items):
@@ -126,6 +314,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Save", self.save, "<Control>s", "db"),
             ("Save _As…", self.save_as, "<Control><Shift>s", "db"),
             None,
+            ("_Import Entries from KeePass File…", self.import_entries, None, "db"),
+            ("Export Selected _Entries…", self.export_entries, None, "entry"),
             ("_Export to CSV…", self.export_csv, None, "db"),
             None,
             ("Database _Settings…", self.database_settings, None, "db"),
@@ -148,6 +338,9 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Edit Entry…", self.edit_entry, "Return", "entry"),
             ("D_uplicate Entry", self.duplicate_entry, "<Control>k", "entry"),
             ("_Delete Entry", self.delete_entries, "Delete", "entry"),
+            None,
+            ("Copy to Other Data_base…", self.copy_to_other_database, None, "entry"),
+            ("E_xport Selected Entries…", self.export_entries, None, "entry"),
             None,
             ("Copy _User Name", self.copy_username, "<Control>b", "entry"),
             ("Copy _Password", self.copy_password, "<Control>c", "entry"),
@@ -356,7 +549,7 @@ class MainWindow(Gtk.ApplicationWindow):
             vb.pack_start(d, False, False, 0)
             hb.pack_start(vb, True, True, 0)
             b.add(hb)
-            b.connect("clicked", lambda _b, path=p: self.show_unlock(path))
+            b.connect("clicked", lambda _b, path=p: self.open_path(path))
             self.recent_box.pack_start(b, False, False, 0)
             mi = Gtk.MenuItem(label=p.replace(os.path.expanduser("~"), "~"))
             mi.connect("activate", lambda _m, path=p: self.open_path(path))
@@ -523,6 +716,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.update_title()
 
     def update_title(self):
+        self._update_tab(self.doc)
         if self.db is None:
             self.set_title(("Locked — " if self.db_path else "") + APP_NAME)
             return
@@ -614,19 +808,27 @@ class MainWindow(Gtk.ApplicationWindow):
             self.unlock_err.set_text("Key file not found.")
             return
         path = self.db_path
+        doc = self.doc
         self.unlock_err.set_text("")
         self._set_unlock_busy(True)
 
         def work():
             try:
                 db = kdbx.Database.open(path, pw if (pw or not kf) else None, kf)
-                GLib.idle_add(self._unlock_done, db, kf, None)
+                GLib.idle_add(self._unlock_done, db, kf, None, doc)
             except Exception as e:  # noqa
-                GLib.idle_add(self._unlock_done, None, kf, e)
+                GLib.idle_add(self._unlock_done, None, kf, e, doc)
         threading.Thread(target=work, daemon=True).start()
 
-    def _unlock_done(self, db, kf, err):
+    def _unlock_done(self, db, kf, err, doc=None):
         self._set_unlock_busy(False)
+        if doc is not None and doc is not self.doc:
+            # the user switched to another tab while this one was unlocking
+            if err is None and doc.page in self._docs:
+                doc.db, doc.keyfile = db, kf
+                self.config.add_recent(db.path, kf)
+                self._update_tab(doc)
+            return False
         if err is not None:
             if isinstance(err, kdbx.InvalidKey):
                 self.unlock_err.set_text("Wrong master password or key file.")
@@ -667,8 +869,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.update_actions()
 
     def open_database(self):
-        if not self.confirm_close():
-            return
         fc = Gtk.FileChooserDialog(title="Open Database", transient_for=self, action=Gtk.FileChooserAction.OPEN)
         fc.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Open", Gtk.ResponseType.OK)
         f = Gtk.FileFilter()
@@ -690,14 +890,16 @@ class MainWindow(Gtk.ApplicationWindow):
         fc.destroy()
 
     def open_path(self, path, confirmed=False):
-        if not confirmed and not self.confirm_close():
-            return
+        """Open `path` in its own tab (or switch to it if it is already open)."""
         self.present()
+        found = self._find_doc(path)
+        if found is not None:
+            self._switch_to(found)
+            return
+        self._make_room()
         self.show_unlock(path)
 
     def new_database(self):
-        if not self.confirm_close():
-            return
         fc = Gtk.FileChooserDialog(title="Create New Database", transient_for=self, action=Gtk.FileChooserAction.SAVE)
         fc.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Create", Gtk.ResponseType.OK)
         fc.set_current_name("Database.kdbx")
@@ -727,6 +929,7 @@ class MainWindow(Gtk.ApplicationWindow):
         except Exception as e:
             dialogs.error(self, "Could not create database", str(e))
             return
+        self._make_room()
         self.keyfile = kf
         self.config.add_recent(path, kf)
         self.load_db(db)
@@ -745,6 +948,14 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def close_database(self):
         if not self.confirm_close():
+            return
+        if self.tabs.get_n_pages() > 1:
+            doc = self.doc
+            doc.db = None
+            n = self.tabs.page_num(doc.page)
+            self.tabs.remove_page(n)  # switches to the neighbouring tab
+            del self._docs[doc.page]
+            self._update_tab_bar()
             return
         path = self.db_path
         self.show_unlock(path)
@@ -870,15 +1081,175 @@ class MainWindow(Gtk.ApplicationWindow):
         except OSError as ex:
             dialogs.error(self, "Export failed", str(ex))
 
+    # ===================================================== entries <-> files / tabs
+    def _doc_name(self, d):
+        if d.db is not None and d.db.name:
+            return d.db.name
+        return os.path.splitext(os.path.basename(d.path or "New Database"))[0]
+
+    def _target_group(self):
+        g = self.selected_group() if self.filter_mode is None else None
+        rb = self.db.recycle_bin()
+        if g is None or (rb is not None and g.is_descendant_of(rb)):
+            g = self.db.root_group
+        return g
+
+    def export_entries(self):
+        """Save the selected entries to a new, password-protected .kdbx file."""
+        entries = self.selected_entries()
+        if not entries or self.db is None:
+            return
+        fc = Gtk.FileChooserDialog(title="Export Entries", transient_for=self, action=Gtk.FileChooserAction.SAVE)
+        fc.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Export", Gtk.ResponseType.OK)
+        fc.set_do_overwrite_confirmation(True)
+        name = entries[0].title if len(entries) == 1 and entries[0].title else "Exported entries"
+        fc.set_current_name(re.sub(r'[\\/:*?"<>|]+', "_", name) + ".kdbx")
+        if self.db_path:
+            fc.set_current_folder(os.path.dirname(self.db_path))
+        r = fc.run()
+        path = fc.get_filename()
+        fc.destroy()
+        if r != Gtk.ResponseType.OK or not path:
+            return
+        if not path.lower().endswith(".kdbx"):
+            path += ".kdbx"
+        if self._find_doc(path) is not None:
+            dialogs.error(self, "That database is open", "Choose a new file name for the exported entries.")
+            return
+        d = dialogs.MasterKeyDialog(self, "Protect the Exported File",
+                                    "The exported file is encrypted. Choose a password for it: you will need "
+                                    "it to import %s into another database." %
+                                    ("the entry" if len(entries) == 1 else "the %d entries" % len(entries)))
+        res = d.get_result()
+        d.destroy()
+        if res is None:
+            return
+        pw, kf = res
+        try:
+            self._run_busy("Exporting…", lambda: kdbx.export_entries(entries, path, pw, kf), lambda _r: None)
+            os.chmod(path, 0o600)
+        except Exception as e:
+            dialogs.error(self, "Export failed", str(e))
+            return
+        self.set_status("Exported %d %s to %s" % (len(entries), "entry" if len(entries) == 1 else "entries",
+                                                  path.replace(os.path.expanduser("~"), "~")), 8)
+
+    def import_entries(self):
+        """Copy the entries of another .kdbx file into the selected group."""
+        if self.db is None:
+            return
+        fc = Gtk.FileChooserDialog(title="Import Entries", transient_for=self, action=Gtk.FileChooserAction.OPEN)
+        fc.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Open", Gtk.ResponseType.OK)
+        f = Gtk.FileFilter()
+        f.set_name("KeePass databases (*.kdbx)")
+        f.add_pattern("*.kdbx")
+        f.add_pattern("*.KDBX")
+        fc.add_filter(f)
+        if self.db_path:
+            fc.set_current_folder(os.path.dirname(self.db_path))
+        r = fc.run()
+        path = fc.get_filename()
+        fc.destroy()
+        if r != Gtk.ResponseType.OK or not path:
+            return
+        open_doc = self._find_doc(path)
+        if open_doc is not None and open_doc.db is not None:
+            src = open_doc.db  # already unlocked in a tab
+        else:
+            src = None
+            err = ""
+            while src is None:
+                res = dialogs.ask_key(self, path, err)
+                if res is None:
+                    return
+                pw, kf = res
+                try:
+                    box = {}
+                    self._run_busy("Opening…", lambda: kdbx.Database.open(path, pw if (pw or not kf) else None, kf),
+                                   lambda db: box.setdefault("db", db))
+                    src = box["db"]
+                except kdbx.InvalidKey:
+                    err = "Wrong password or key file."
+                except Exception as e:
+                    dialogs.error(self, "Could not open the file", str(e))
+                    return
+                finally:
+                    self._default_status()
+        if src is self.db:
+            dialogs.error(self, "That is this database", "Choose another file to import from.")
+            return
+        entries = src.all_entries()
+        if not entries:
+            dialogs.message(self, "Nothing to import", "The file has no entries.")
+            return
+        target = self._target_group()
+        copies = kdbx.copy_entries(entries, target)
+        self.changed()
+        self.set_status("Imported %d %s into “%s”" % (len(copies), "entry" if len(copies) == 1 else "entries",
+                                                    target.name), 8)
+        if len(copies) == 1:
+            self._select_group_uuid(copies[0].parent.uuid)
+            self._select_entry_el(copies[0].el)
+
+    def copy_to_other_database(self):
+        others = [d for d in self.docs() if d is not self.doc and d.db is not None]
+        if not self.selected_entries():
+            return
+        if not others:
+            dialogs.message(self, "No other database is open",
+                            "Open the other database (File → Open), unlock it, then come back to this tab "
+                            "and copy the entry again. To move entries between computers, use "
+                            "Entry → Export Selected Entries instead.")
+            return
+        if len(others) == 1:
+            self.copy_to_database(others[0])
+            return
+        m = Gtk.Menu()
+        for d in others:
+            mi = Gtk.MenuItem(label=self._doc_name(d))
+            mi.connect("activate", lambda _m, d=d: self.copy_to_database(d))
+            m.append(mi)
+        m.attach_to_widget(self.entry_view, None)
+        m.show_all()
+        m.popup_at_widget(self.entry_view, Gdk.Gravity.NORTH, Gdk.Gravity.NORTH, None)
+
+    def copy_to_database(self, doc):
+        entries = self.selected_entries()
+        if not entries or doc.db is None or doc is self.doc:
+            return
+        copies = kdbx.copy_entries(entries, doc.db.root_group)
+        self._save_other(doc)
+        self._update_tab(doc)
+        self.set_status("Copied %d %s to “%s”" % (len(copies), "entry" if len(copies) == 1 else "entries",
+                                                self._doc_name(doc)), 8)
+
     # ============================================================= lock/quit
     def toggle_lock(self):
-        if self.db is not None:
+        if self._any_unlocked():
             self.lock()
         elif self.db_path:
             self.present()
             self.unlock_pw.grab_focus()
 
     def lock(self, force=False):
+        """Lock every open database (the whole workspace)."""
+        start = self.doc
+        for d in self.docs():
+            if d.db is None:
+                continue
+            if d is not self.doc:
+                if not d.db.modified:
+                    d.db = None
+                    self._update_tab(d)
+                    continue
+                self._switch_to(d)
+            if not self._lock_current(force):
+                return False
+        if start is not self.doc and start.page in self._docs:
+            self._switch_to(start)
+        return True
+
+    def _lock_current(self, force=False):
         if self.db is None:
             return True
         if self.db.modified:
@@ -905,8 +1276,17 @@ class MainWindow(Gtk.ApplicationWindow):
                 if w is not self and isinstance(w, Gtk.Dialog) and w.get_transient_for() is self]
 
     def quit_app(self):
-        if not self.confirm_close():
-            return
+        start = self.doc
+        for d in self.docs():
+            if d.db is not None and d.db.modified:
+                self._switch_to(d)
+                if not self.confirm_close():
+                    return
+        if start.page in self._docs:
+            self._switch_to(start)
+        self.config.data["open_files"] = [d.path for d in self.docs() if d.path]
+        if self.db_path:
+            self.config.data["last_file"] = self.db_path
         self.clear_clipboard()
         self._save_geometry()
         self.app.quit()
@@ -920,7 +1300,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _on_state(self, w, ev):
         if ev.changed_mask & Gdk.WindowState.ICONIFIED and ev.new_window_state & Gdk.WindowState.ICONIFIED:
-            if self.config.get("lock_on_minimize") and self.db is not None:
+            if self.config.get("lock_on_minimize") and self._any_unlocked():
                 GLib.idle_add(lambda: (self.lock(force=True), False)[1])
             if self.config.get("minimize_to_tray") and self.app.tray and self.app.tray.ok:
                 GLib.idle_add(lambda: (self.hide(), False)[1])
@@ -957,12 +1337,12 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _idle_check(self):
         mins = self.config.get("lock_idle_minutes")
-        if mins and self.db is not None and time.time() - self._last_activity > mins * 60:
+        if mins and self._any_unlocked() and time.time() - self._last_activity > mins * 60:
             self.lock(force=True)
         return True
 
     def on_screensaver(self, active):
-        if active and self.config.get("lock_on_screensaver") and self.db is not None:
+        if active and self.config.get("lock_on_screensaver") and self._any_unlocked():
             self.lock(force=True)
 
     # ============================================================ groups tree
@@ -1309,6 +1689,10 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Edit Entry…", self.edit_entry, "Return", "entry"),
             ("D_uplicate Entry", self.duplicate_entry, "<Control>k", "entry"),
             ("_Move to Group", move),
+            ("Copy to Data_base", [(self._doc_name(d).replace("_", "__"), (lambda d=d: self.copy_to_database(d)))
+                                   for d in self.docs() if d is not self.doc and d.db is not None]
+             or [("(unlock another database in a tab first)", None)]),
+            ("E_xport Entries…", self.export_entries, None, "entry"),
             ("_Delete Entry", self.delete_entries, "Delete", "entry"),
         ]
         m = Gtk.Menu()
@@ -1651,7 +2035,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if (cls and "velkey" in cls.lower()) or (title and title.endswith("— " + APP_NAME)):
             # Velkey itself is focused: behave like KeePass and ignore
             return
-        if self.db is None:
+        if not self._any_unlocked():
             if not self.db_path:
                 self.present()
                 return
@@ -1667,7 +2051,10 @@ class MainWindow(Gtk.ApplicationWindow):
         hk = self.app.hotkey
         wait = hk.wait_released if hk is not None else None
         url = browser.url_for_window(title)
-        matches = autotype.find_matches(self.db, title, self.config.get("autotype_match_url"), url)
+        open_dbs = [d.db for d in self.docs() if d.db is not None]  # every unlocked tab
+        matches = []
+        for db in open_dbs:
+            matches += autotype.find_matches(db, title, self.config.get("autotype_match_url"), url)
         require = self.config.get("autotype_require_match")
         if not matches and not url and title and _tries < 2:
             # browsers save the tab list ~2.5 s after a page loads: look again shortly
@@ -1695,7 +2082,7 @@ class MainWindow(Gtk.ApplicationWindow):
             GLib.timeout_add(300, lambda: (self.app.typer.type_sequence(e, seq, self._autotype_done,
                                                                         initial_delay=0.15,
                                                                         field_check=check), False)[1])
-        picker = dialogs.AutoTypePicker(self.db, matches or None, title, pick)
+        picker = dialogs.AutoTypePicker(self.db or open_dbs[0], matches or None, title, pick)
         self._picker = picker
         picker.connect("destroy", lambda *_: setattr(self, "_picker", None))
         # Wayland: a window from a background app does not get focus on its own
@@ -1937,7 +2324,8 @@ class MainWindow(Gtk.ApplicationWindow):
             ("Ctrl+I", "Add entry"), ("Enter", "Edit entry"), ("Ctrl+K", "Duplicate entry"),
             ("Delete", "Delete entry"), ("F2", "Edit group"),
             ("Ctrl+F / Ctrl+E", "Search"), ("Ctrl+L", "Lock workspace"), ("Ctrl+S", "Save"),
-            ("Ctrl+O", "Open database"), ("Ctrl+N", "New database"), ("Ctrl+W", "Close database"),
+            ("Ctrl+O", "Open database (new tab)"), ("Ctrl+N", "New database"), ("Ctrl+W", "Close database tab"),
+            ("Ctrl+Tab", "Next database tab"), ("Ctrl+Shift+Tab", "Previous database tab"),
             ("Ctrl+G", "Password generator"), ("Ctrl+Q", "Exit"),
             ("Double-click", "User name / password: copy · URL: open · Title: edit"),
         ]
@@ -1980,6 +2368,8 @@ class MainWindow(Gtk.ApplicationWindow):
         ("<Control>u", "open_url", "entry", False), ("<Control><Shift>u", "copy_url", "entry", False),
         ("<Control>v", "autotype_selected", "entry", False), ("<Control>a", "select_all", "db", False),
         ("F2", "edit_group", "group", True), ("F1", "show_shortcuts", None, True),
+        ("<Control>Tab", "next_tab", None, True), ("<Control><Shift>Tab", "prev_tab", None, True),
+        ("<Control>Page_Down", "next_tab", None, True), ("<Control>Page_Up", "prev_tab", None, True),
     ]
 
     def _on_key(self, w, ev):

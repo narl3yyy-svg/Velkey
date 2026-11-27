@@ -1200,6 +1200,44 @@ class GroupDialog(Gtk.Dialog):
 # ---------------------------------------------------------------------------
 # master key / new database
 # ---------------------------------------------------------------------------
+def ask_key(parent, path, error_text=""):
+    """Ask for the password / key file of `path`. Returns (pw, kf) or None."""
+    d = make_dialog(parent, "Open “%s”" % os.path.basename(path), "Open", width=460)
+    g = grid()
+    g.attach(key_label("Password"), 0, 0, 1, 1)
+    pw = password_entry()
+    pw.set_hexpand(True)
+    pw.set_activates_default(True)
+    g.attach(pw, 1, 0, 1, 1)
+    g.attach(key_label("Key file"), 0, 1, 1, 1)
+    krow = Gtk.Box(spacing=6)
+    kf = Gtk.Entry()
+    kf.set_placeholder_text("optional")
+    kf.set_hexpand(True)
+    br = Gtk.Button(label="Browse…")
+
+    def browse(*_):
+        fc = Gtk.FileChooserDialog(title="Select Key File", transient_for=d, action=Gtk.FileChooserAction.OPEN)
+        fc.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Select", Gtk.ResponseType.OK)
+        if fc.run() == Gtk.ResponseType.OK:
+            kf.set_text(fc.get_filename())
+        fc.destroy()
+    br.connect("clicked", browse)
+    krow.pack_start(kf, True, True, 0)
+    krow.pack_start(br, False, False, 0)
+    g.attach(krow, 1, 1, 1, 1)
+    err = Gtk.Label(label=error_text, xalign=0)
+    err.get_style_context().add_class("error")
+    g.attach(err, 0, 2, 2, 1)
+    d.get_content_area().add(g)
+    d.show_all()
+    pw.grab_focus()
+    r = d.run()
+    res = (pw.get_text(), kf.get_text().strip() or None) if r == Gtk.ResponseType.OK else None
+    d.destroy()
+    return res
+
+
 class MasterKeyDialog(Gtk.Dialog):
     def __init__(self, parent, title="Change Master Key", intro=None):
         super().__init__(title=title, transient_for=parent, modal=True)

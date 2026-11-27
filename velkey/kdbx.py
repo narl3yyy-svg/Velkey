@@ -1347,3 +1347,102 @@ class Entry(_Node):
         hay = " ".join([self.title, self.username, self.url, self.notes, " ".join(self.tags)] +
                        [v for k, v, p in self.custom_fields() if not p]).lower()
         return all(t in hay for t in terms)
+
+
+# ------------------------------------------------------------------------
+# copying entries between databases (export / import / copy to other tab)
+# ------------------------------------------------------------------------
+def _copy_custom_icon(src_db, dst_db, uid):
+    if not uid or dst_db.custom_icon(uid) is not None:
+        return
+    data = src_db.custom_icon(uid)
+    if data is None:
+        return
+    icons = dst_db.meta.find("CustomIcons")
+    if icons is None:
+        icons = _sub(dst_db.meta, "CustomIcons")
+    for ic in src_db.meta.find("CustomIcons").findall("Icon"):
+        if _text(ic, "UUID") == uid:
+            icons.append(copy.deepcopy(ic))
+            return
+
+
+def _uuids(db):
+    return {_text(el, "UUID") for el in db.root.find("Root").iter() if el.tag in ("Entry", "Group")}
+
+
+def copy_entry(entry, group, taken=None):
+    """Copy `entry` (with history, attachments and custom icon) into `group`,
+    which may belong to another database. The copy gets a new UUID when the
+    target database already has one with the same UUID. Returns the new Entry."""
+    src, dst = entry.db, group.db
+    el = copy.deepcopy(entry.el)
+    if taken is None:
+        taken = _uuids(dst)
+    if _text(el, "UUID") in taken:
+        _set_text(el, "UUID", new_uuid_b64())
+    taken.add(_text(el, "UUID"))
+    if src is not dst:
+        for v in el.iter("Value"):
+            ref = v.get("Ref")
+            if ref is not None:
+                try:
+                    raw, prot = src.binaries[int(ref)]
+                except (ValueError, IndexError):
+                    raw, prot = b"", False
+                dst.binaries.append([raw, prot])
+                v.set("Ref", str(len(dst.binaries) - 1))
+        for c in el.iter("CustomIconUUID"):
+            _copy_custom_icon(src, dst, c.text)
+    idx = len(group.el)
+    for i, c in enumerate(group.el):
+        if c.tag == "Group":
+            idx = i
+            break
+    group.el.insert(idx, el)
+    t = _times(el)
+    _set_text(t, "LocationChanged", fmt_time_iso(now_utc()))
+    dst.invalidate()
+    dst.modified = True
+    return Entry(dst, el)
+
+
+def _child_group(group, name, icon):
+    for g in group.groups:
+        if g.name == name:
+            return g
+    return group.add_group(name, icon)
+
+
+def copy_entries(entries, group):
+    """Copy entries into `group`, recreating their sub-group path below the
+    source database's top group (e.g. 'Internet/Shops'). Returns the copies."""
+    taken = _uuids(group.db)
+    out = []
+    for e in entries:
+        target = group
+        chain = []
+        p = e.parent
+        while p is not None and p.parent is not None:  # stop below the top group
+            chain.append(p)
+            p = p.parent
+        for g in reversed(chain):
+            target = _child_group(target, g.name, g.icon_id)
+            if g.custom_icon_uuid:
+                _copy_custom_icon(e.db, group.db, g.custom_icon_uuid)
+                target.custom_icon_uuid = g.custom_icon_uuid
+        out.append(copy_entry(e, target, taken))
+    return out
+
+
+def export_entries(entries, path, password, keyfile=None, name="Exported entries"):
+    """Write `entries` to a new encrypted KDBX file (no default groups)."""
+    db = Database.create(path, password, keyfile, name)
+    top = db.root_group
+    for g in list(top.el.findall("Group")):
+        top.el.remove(g)
+    db.invalidate()
+    for e in entries:
+        copy_entry(e, top)
+    db.save()
+    return db
