@@ -143,7 +143,7 @@ Velkey minimizes itself and types into the window you were in before. It types *
 In a **browser**, Velkey reads the page's real **URL** from the browser's own session file, so it knows the actual site even when the window just says *"Gmail - Helium"*. This works with Chrome, Chromium, Helium, Brave, Vivaldi, Edge, Opera, Firefox, LibreWolf and Zen (including Flatpak and Snap). Then an entry matches when:
 
 - its **URL** is on the same site: an entry for `https://accounts.google.com` ↔ a tab on `mail.google.com`
-- one of its **window rules** (Edit Entry → *Auto-Type* tab) fits. A rule starting with `??:URL:` is checked against the URL, e.g. `??:URL:https://accounts.google.com*` (same syntax as KeePass)
+- one of its **window rules** (Edit Entry → *Auto-Type* tab) fits. A rule that is a web address is checked against the page URL, e.g. `https://login.example.com/users/*` (KeePass's `??:URL:https://…` form works too)
 
 When the URL is known, a page that only *looks* right (same title, different domain) is **not** matched. In other apps, or if the URL can't be found, Velkey falls back to the window title:
 

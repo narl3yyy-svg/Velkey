@@ -240,6 +240,8 @@ def _assoc_hit(pattern, title, url):
     p = (pattern or "").strip()
     if p[:7].upper() == "??:URL:":  # KeePass syntax: match the browser's URL
         return bool(url) and _wild(p[7:], url)
+    if p[:8].lower() == "https://" or p[:7].lower() == "http://":  # a plain URL is a URL rule too
+        return bool(url) and _wild(p, url)
     return bool(title) and _wild(p, title)
 
 

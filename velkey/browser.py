@@ -16,6 +16,7 @@ Only read locally, never stored or sent anywhere.
 import glob
 import json
 import os
+import re
 import struct
 import time
 
@@ -45,12 +46,16 @@ _cache = {}  # path -> (mtime, size, [(title, url), ...] oldest first)
 
 # ------------------------------------------------------------------ parsers
 def _chromium_tabs(data):
-    """(title, url) of the page each open tab currently shows, from an SNSS log."""
+    """(title, url, active) of the page each open tab currently shows, from an
+    SNSS log. `active` is True for the selected tab of each window."""
     if data[:4] != b"SNSS":
         return []
     navs = {}      # tab id -> {navigation index: (title, url)}
     selected = {}  # tab id -> current navigation index
     last = {}      # tab id -> navigation index updated last
+    tab_window = {}  # tab id -> window id
+    tab_index = {}   # tab id -> position in its window
+    win_sel = {}     # window id -> position of the selected tab
     pos = 8
     n = len(data)
     while pos + 2 <= n:
@@ -69,6 +74,19 @@ def _chromium_tabs(data):
             if cid == 16:  # kCommandTabClosed {tab, time}
                 tab = struct.unpack_from("<i", body, 0)[0]
                 navs.pop(tab, None)
+                tab_window.pop(tab, None)
+                continue
+            if cid == 0:  # kCommandSetTabWindow {window, tab}
+                win, tab = struct.unpack_from("<ii", body, 0)
+                tab_window[tab] = win
+                continue
+            if cid == 2:  # kCommandSetTabIndexInWindow {tab, index}
+                tab, idx = struct.unpack_from("<ii", body, 0)
+                tab_index[tab] = idx
+                continue
+            if cid == 8:  # kCommandSetSelectedTabInIndex {window, index}
+                win, idx = struct.unpack_from("<ii", body, 0)
+                win_sel[win] = idx
                 continue
             if cid != 6:  # kCommandUpdateTabNavigation (pickled)
                 continue
@@ -85,11 +103,12 @@ def _chromium_tabs(data):
             continue
         navs.setdefault(tab, {})[idx] = (title, url)
         last[tab] = idx
+    active = {t for t, w in tab_window.items() if w in win_sel and tab_index.get(t) == win_sel[w]}
     out = []
     for tab, entries in navs.items():
         cur = entries.get(selected.get(tab, last.get(tab)))
         if cur and cur[1].startswith(("http://", "https://")):
-            out.append(cur)
+            out.append((cur[0], cur[1], tab in active))
     return out
 
 
@@ -137,14 +156,15 @@ def _firefox_tabs(data):
     js = json.loads(_lz4_block(data[12:]))
     out = []
     for w in js.get("windows", []):
-        for t in w.get("tabs", []):
+        sel = int(w.get("selected") or 0) - 1
+        for n, t in enumerate(w.get("tabs", [])):
             entries = t.get("entries") or []
             idx = int(t.get("index") or len(entries)) - 1
             if 0 <= idx < len(entries):
                 e = entries[idx]
                 url = e.get("url", "")
                 if url.startswith(("http://", "https://")):
-                    out.append((e.get("title") or "", url))
+                    out.append((e.get("title") or "", url, n == sel))
     return out
 
 
@@ -207,15 +227,34 @@ def _session_files():
     return files
 
 
+def _title_names_site(page_title, url):
+    """True if a word of the page title is part of the site's name:
+    'Login - Example Bank' and https://login.examplebank.com/..."""
+    name = site(url).split(".")[0]
+    words = re.findall(r"[a-z0-9]{3,}", page_title.lower())
+    return any(w in name for w in words if len(w) >= 4 or w == name)
+
+
 def url_for_window(window_title):
     """URL of the page whose title matches the browser window title, or ''."""
     candidates = _page_titles(window_title)
     if not candidates:
         return ""
+    files = _session_files()  # browser used most recently first
     for cand in candidates:
-        for _m, path, parser in _session_files():  # browser used most recently first
-            hits = [url for title, url in _tabs(path, parser) if title == cand]
+        for _m, path, parser in files:
+            hits = [url for title, url, _a in _tabs(path, parser) if title == cand]
             if hits:
                 # two open tabs with this title on different sites: refuse to guess
                 return hits[-1] if len({site(u) for u in hits}) == 1 else ""
+    # Chromium does not always save the title of a page (e.g. a tab opened by
+    # a link, or a title set by script). Fall back to the selected tab of each
+    # window, accepted only when it has no saved title and the window title
+    # names its site.
+    page = candidates[-1]
+    for _m, path, parser in files:
+        hits = [url for title, url, active in _tabs(path, parser)
+                if active and not title and _title_names_site(page, url)]
+        if hits:
+            return hits[-1] if len({site(u) for u in hits}) == 1 else ""
     return ""

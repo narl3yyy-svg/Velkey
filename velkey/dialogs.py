@@ -533,7 +533,7 @@ def edit_assoc_dialog(parent, window="", seq=""):
     we.set_placeholder_text("e.g.  *Firefox*   or   //regex//")
     g.attach(key_label("Target window"), 0, 0, 1, 1)
     g.attach(we, 1, 0, 1, 1)
-    hint = Gtk.Label(label="Wildcards * and ? are supported. Case-insensitive.", xalign=0)
+    hint = Gtk.Label(label="A window title, or a page address (https://site.com/*). Wildcards * and ? work. Case-insensitive.", xalign=0)
     hint.get_style_context().add_class("dim")
     g.attach(hint, 1, 1, 1, 1)
     se = Gtk.Entry()
