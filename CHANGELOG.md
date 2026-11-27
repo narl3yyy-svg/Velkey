@@ -5,7 +5,7 @@ While the major number is 0, Velkey is young and things may still change between
 
 The version is set in one place, [`velkey/__init__.py`](velkey/__init__.py). To release a new one: change it there, add a section here, commit, then tag it (`git tag -a v0.2.0 -m "Velkey 0.2.0"` and `git push origin v0.2.0`).
 
-## Unreleased
+## [0.1.2] – 2026-11-27
 
 ### Fixed
 - Using the global Auto-Type hot key while an Edit Entry (or other Velkey) dialog was open showed an entry picker that could not be clicked, typed into or closed, so Velkey seemed frozen. The picker now works and closes normally. Linux and macOS.
@@ -42,5 +42,6 @@ First numbered release.
 - Linux: `./run.sh` or `./install.sh`.
 - macOS (Apple silicon and Intel): `./runmac.sh` or `./installmac.sh` (installs `Velkey.app`).
 
+[0.1.2]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.2
 [0.1.1]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.1
 [0.1.0]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.0
