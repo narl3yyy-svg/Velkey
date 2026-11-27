@@ -43,8 +43,8 @@ class VelkeyApp(Gtk.Application):
         self.typer = autotype.AutoTyper(self.config)
         conn = self.get_dbus_connection()
         self.probe = autotype.WindowProbe(conn)
-        from .a11y import FocusTracker
-        self.focus = FocusTracker()
+        from .a11y import FocusClient
+        self.focus = FocusClient()  # accessibility runs in a helper process
         self.hotkey = autotype.GlobalHotkey(conn, self.config.get("autotype_hotkey"), self._on_hotkey)
         self.hotkey.start()
         self._watch_screensaver(conn)

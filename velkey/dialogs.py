@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango  # noqa: E402
 
 from . import autotype, kdbx, otp, theme
 
@@ -1711,7 +1711,7 @@ class AutoTypePicker(Gtk.Window):
         self.search.connect("activate", lambda *_: self._choose())
         self.search.connect("key-press-event", self._search_key)
         box.pack_start(self.search, False, False, 0)
-        self.store = Gtk.ListStore(object, str, object, str, str, str)
+        self.store = Gtk.ListStore(object, str, GdkPixbuf.Pixbuf, str, str, str)
         self.view = Gtk.TreeView(model=self.store)
         c = Gtk.TreeViewColumn("Title")
         pr = Gtk.CellRendererPixbuf()

@@ -1640,6 +1640,11 @@ class MainWindow(Gtk.ApplicationWindow):
     def global_autotype(self):
         if self.app.typer.busy:
             return
+        if getattr(self, "_picker", None) is not None:
+            # a picker is already open: bring it back instead of opening another
+            self._picker.present()
+            self.app.probe.activate(None, self._picker.get_title())
+            return
         self.app.probe.get_active(self._global_autotype_with)
 
     def _global_autotype_with(self, title, cls="", _tries=0):
@@ -1691,6 +1696,8 @@ class MainWindow(Gtk.ApplicationWindow):
                                                                         initial_delay=0.15,
                                                                         field_check=check), False)[1])
         picker = dialogs.AutoTypePicker(self.db, matches or None, title, pick)
+        self._picker = picker
+        picker.connect("destroy", lambda *_: setattr(self, "_picker", None))
         # Wayland: a window from a background app does not get focus on its own
         GLib.timeout_add(150, lambda: (self.app.probe.activate(None, picker.get_title()), False)[1])
 
