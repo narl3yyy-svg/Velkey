@@ -157,6 +157,7 @@ class MainWindow(Gtk.ApplicationWindow):
         doc.label.get_parent().set_tooltip_text(tip or None)
 
     def _remember_view(self):
+        self._remember_position()  # also for the next start
         d = self.doc
         d.group_uuid = self.current_group.uuid if self.current_group is not None else None
         d.filter = self.filter_mode
@@ -878,10 +879,16 @@ class MainWindow(Gtk.ApplicationWindow):
                 break
         if self.selected_group() is None:
             self._select_group_uuid(db.root_group.uuid)
-        self._restoring = False
         if pos.get("entry"):
-            self._select_entry_uuid(pos["entry"])
-        self._remember_position()
+            self._select_entry_uuid(pos["entry"], scroll=not pos.get("top"))
+        if pos.get("top"):
+            self._scroll_entry_to_top(pos["top"])  # same rows on screen as before
+
+        def restored():
+            # the list scrolls once it is laid out; record positions again only after that
+            self._restoring = False
+            return False
+        GLib.timeout_add(300, restored)
         self.entry_view.grab_focus()
         self.update_actions()
 
@@ -897,17 +904,41 @@ class MainWindow(Gtk.ApplicationWindow):
         e = self.selected_entry()
         positions = self.config.data.setdefault("positions", {})
         positions.pop(self.db_path, None)  # newest last
-        positions[self.db_path] = {"group": g.uuid if g is not None else "", "entry": e.uuid if e else ""}
+        positions[self.db_path] = {"group": g.uuid if g is not None else "", "entry": e.uuid if e else "",
+                                   "top": self._top_entry_uuid()}
         while len(positions) > self.MAX_POSITIONS:
             positions.pop(next(iter(positions)))
 
-    def _select_entry_uuid(self, uid):
+    def _top_entry_uuid(self):
+        """The entry shown at the top of the list (where the user scrolled to)."""
+        if not self.entry_view.get_realized() or not len(self.entry_store):
+            return ""
+        hit = self.entry_view.get_path_at_pos(0, 0)
+        if hit is None:
+            return ""
+        path, _col, _x, cell_y = hit
+        idx = path.get_indices()[0]
+        height = self.entry_view.get_cell_area(path, None).height
+        if height and cell_y > height / 2 and idx + 1 < len(self.entry_store):
+            idx += 1  # the top row is mostly scrolled past: the next one is what the user sees
+        return self.entry_store[idx][C_OBJ].uuid
+
+    def _select_entry_uuid(self, uid, scroll=True):
         for row in self.entry_store:
             if row[C_OBJ].uuid == uid:
                 sel = self.entry_view.get_selection()
                 sel.unselect_all()
                 sel.select_iter(row.iter)
-                self.entry_view.scroll_to_cell(row.path, None, False, 0, 0)
+                if scroll:
+                    self.entry_view.scroll_to_cell(row.path, None, False, 0, 0)
+                return True
+        return False
+
+    def _scroll_entry_to_top(self, uid):
+        """Scroll so this entry is the first row shown (done once the list is laid out)."""
+        for row in self.entry_store:
+            if row[C_OBJ].uuid == uid:
+                self.entry_view.scroll_to_cell(row.path, None, True, 0.0, 0.0)
                 return True
         return False
 
@@ -1385,6 +1416,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def lock(self, force=False):
         """Lock every open database (the whole workspace)."""
+        self._remember_position()
         start = self.doc
         for d in self.docs():
             if d.db is None:
