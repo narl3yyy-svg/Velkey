@@ -7,12 +7,13 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import time
 
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango
 
-from . import autotype, browser, dialogs, kdbx, otp, theme
+from . import autotype, browser, dialogs, kdbx, otp, theme, touchid
 
 APP_NAME = "Velkey"
 MASK = "••••••••"
@@ -94,6 +95,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.add(root)
 
         self.connect("key-press-event", self._on_key)
+        self.connect("notify::is-active", lambda *_: self._touchid_auto())
         self.connect("delete-event", self._on_delete)
         self.connect("window-state-event", self._on_state)
         self.connect("event", self._on_any_event)
@@ -259,8 +261,8 @@ class MainWindow(Gtk.ApplicationWindow):
         if db is None or not db.path or not self.config.get("auto_save"):
             return
         try:
-            if os.path.exists(db.path) and db.file_mtime and abs(os.path.getmtime(db.path) - db.file_mtime) > 0.001:
-                return  # changed on disk: let the user decide when they open the tab
+            if db.changed_on_disk():
+                return  # really changed on disk: let the user decide when they open the tab
             if self.config.get("backup_on_save") and db.path not in self._backed_up and os.path.exists(db.path):
                 shutil.copy2(db.path, db.path + ".bak")
                 self._backed_up.add(db.path)
@@ -325,6 +327,8 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             ("Database _Settings…", self.database_settings, None, "db"),
             ("Change _Master Key…", self.change_master_key, None, "db"),
+        ] + ([("Forget _Touch ID for This Database", self.forget_touchid, None, "db")]
+             if sys.platform == "darwin" else []) + [
             None,
             ("_Lock Workspace", self.toggle_lock, "<Control>l"),
             ("E_xit", self.quit_app, "<Control>q"),
@@ -503,6 +507,14 @@ class MainWindow(Gtk.ApplicationWindow):
         self.unlock_btn.get_style_context().add_class("suggested-action")
         self.unlock_btn.connect("clicked", lambda *_: self.do_unlock())
         card.pack_start(self.unlock_btn, False, False, 4)
+        # macOS: Touch ID (shown only for databases where it was set up)
+        self.touch_btn = Gtk.Button(label="Unlock with Touch ID")
+        self.touch_btn.set_no_show_all(True)
+        self.touch_btn.connect("clicked", lambda *_: self._touchid_unlock())
+        card.pack_start(self.touch_btn, False, False, 0)
+        self._touch_tried = None      # path the fingerprint prompt already came up for
+        self._unlock_via_touch = False
+        self._typed_pw = None
         self.unlock_card = card
         center.pack_start(card, False, False, 6)
 
@@ -795,6 +807,85 @@ class MainWindow(Gtk.ApplicationWindow):
         self._default_status()
         if path:
             GLib.idle_add(lambda: (self.unlock_pw.grab_focus(), False)[1])
+        self._touch_tried = None
+        self.touch_btn.set_visible(self._touchid_enabled(path))
+        GLib.timeout_add(350, lambda: (self._touchid_auto(), False)[1])
+
+    # ------------------------------------------------------------ Touch ID
+    def _touchid_enabled(self, path):
+        return bool(path) and touchid.available() and bool(self.config.get("touchid", {}).get(path))
+
+    def _touchid_disable(self, path):
+        touchid.forget(path)
+        self.config.data.setdefault("touchid", {}).pop(path, None)
+        self.touch_btn.hide()
+        self.config.save()
+
+    def _touchid_auto(self):
+        """Bring up the fingerprint prompt once per unlock screen, when Velkey is in front."""
+        path = self.db_path
+        if (self.db is None and path and self._touch_tried != path and self.is_active()
+                and self.stack.get_visible_child_name() == "unlock" and self._touchid_enabled(path)):
+            self._touchid_unlock()
+
+    def _touchid_unlock(self):
+        path = self.db_path
+        if not self._touchid_enabled(path) or not self.unlock_btn.get_sensitive():
+            return
+        self._touch_tried = path
+        self.unlock_err.set_text("")
+        self.touch_btn.set_sensitive(False)
+        name = os.path.splitext(os.path.basename(path))[0]
+
+        def work():
+            status, pw = touchid.unlock(path, "unlock “%s”" % name)
+            GLib.idle_add(done, status, pw)
+
+        def done(status, pw):
+            self.touch_btn.set_sensitive(True)
+            if path != self.db_path or self.db is not None:
+                return False  # moved on meanwhile
+            if status == "ok":
+                self._unlock_via_touch = True
+                self.unlock_pw.set_text(pw)
+                self.do_unlock()
+            elif status == "missing":
+                self._touchid_disable(path)
+                self.unlock_err.set_text("Touch ID was not set up for this database any more. Type your password.")
+            elif status != "cancelled":
+                self.unlock_err.set_text("Touch ID is not available right now. Type your password.")
+            self.unlock_pw.grab_focus()
+            return False
+        threading.Thread(target=work, daemon=True).start()
+
+    def _touchid_offer(self, path, password):
+        """After unlocking with the typed password: offer Touch ID once per database."""
+        if (not touchid.available() or self._touchid_enabled(path)
+                or self.config.get("touchid_declined", {}).get(path)):
+            return
+        name = os.path.splitext(os.path.basename(path))[0]
+        if dialogs.confirm(self, "Unlock “%s” with Touch ID next time?" % name,
+                           "Velkey keeps your master password in this Mac's Keychain, encrypted by macOS and "
+                           "only usable after your fingerprint. You can always type the password instead, and "
+                           "turn this off with File → Forget Touch ID for This Database.", "Use Touch ID"):
+            if touchid.store(path, password):
+                self.config.data.setdefault("touchid", {})[path] = True
+                self.set_status("Touch ID is set up for “%s”" % name, 6)
+            else:
+                dialogs.error(self, "Touch ID could not be set up", "macOS did not accept the Keychain entry.")
+        else:
+            self.config.data.setdefault("touchid_declined", {})[path] = True
+        self.config.save()
+
+    def forget_touchid(self):
+        path = self.db_path
+        if not path:
+            return
+        self._touchid_disable(path)
+        self.config.data.setdefault("touchid_declined", {})[path] = True
+        self.config.save()
+        self.set_status("Touch ID is off for “%s”; its saved password was removed from the Keychain"
+                        % os.path.basename(path), 8)
 
     def _set_unlock_busy(self, busy):
         for w in (self.unlock_pw, self.unlock_kf, self.unlock_btn):
@@ -820,6 +911,7 @@ class MainWindow(Gtk.ApplicationWindow):
         doc = self.doc
         self.unlock_err.set_text("")
         self._set_unlock_busy(True)
+        self._typed_pw = None if self._unlock_via_touch else pw  # for the Touch ID offer
 
         def work():
             try:
@@ -831,6 +923,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _unlock_done(self, db, kf, err, doc=None):
         self._set_unlock_busy(False)
+        via_touch, self._unlock_via_touch = self._unlock_via_touch, False
+        typed, self._typed_pw = self._typed_pw, None   # never kept beyond this point
         if doc is not None and doc is not self.doc:
             # the user switched to another tab while this one was unlocking
             if err is None and doc.page in self._docs:
@@ -839,7 +933,13 @@ class MainWindow(Gtk.ApplicationWindow):
                 self._update_tab(doc)
             return False
         if err is not None:
-            if isinstance(err, kdbx.InvalidKey):
+            if isinstance(err, kdbx.InvalidKey) and via_touch:
+                self._touchid_disable(self.db_path)
+                self.unlock_pw.set_text("")
+                self.unlock_err.set_text("The password saved for Touch ID no longer opens this database (was the "
+                                         "master key changed?). Type it once; Velkey will offer Touch ID again.")
+                self.config.data.setdefault("touchid_declined", {}).pop(self.db_path, None)
+            elif isinstance(err, kdbx.InvalidKey):
                 self.unlock_err.set_text("Wrong master password or key file.")
             elif isinstance(err, FileNotFoundError):
                 self.unlock_err.set_text("File not found.")
@@ -852,6 +952,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.keyfile = kf
         self.config.add_recent(db.path, kf)
         self.load_db(db)
+        if typed and not via_touch:
+            GLib.idle_add(lambda: (self._touchid_offer(db.path, typed), False)[1])
         if self._pending_autotype is not None:
             title = self._pending_autotype
             self._pending_autotype = None
@@ -1064,13 +1166,17 @@ class MainWindow(Gtk.ApplicationWindow):
         if not db.path:
             return self.save_as()
         try:
-            if os.path.exists(db.path) and db.file_mtime and abs(os.path.getmtime(db.path) - db.file_mtime) > 0.001:
-                if quiet or not dialogs.confirm(
+            if db.changed_on_disk():
+                if quiet:
+                    msg = ("Not saved automatically: “%s” was changed by another program since Velkey opened it. "
+                           "Press Ctrl+S to choose what to do." % os.path.basename(db.path))
+                    self.set_status(msg, 15)
+                    self.app.notify("Velkey", msg)
+                    return False
+                if not dialogs.confirm(
                         self, "The database file was changed by another program",
                         "It may have been modified by a sync tool or another KeePass instance. "
                         "Overwrite it with your version?", "Overwrite", destructive=True):
-                    if quiet:
-                        self.set_status("Auto-save skipped: file changed on disk", 8)
                     return False
             if self.config.get("backup_on_save") and db.path not in self._backed_up and os.path.exists(db.path):
                 shutil.copy2(db.path, db.path + ".bak")
@@ -2568,6 +2674,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.config.add_recent(self.db.path, kf)
         self.changed(refresh=False)
         if self.save(keep_deletions=True):
+            if self._touchid_enabled(self.db.path):
+                if pw:
+                    touchid.store(self.db.path, pw)   # Touch ID now opens it with the new password
+                else:
+                    self._touchid_disable(self.db.path)
             dialogs.message(self, "Master key changed", "The database has been saved with the new master key.")
 
     def password_generator(self):

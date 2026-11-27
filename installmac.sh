@@ -59,6 +59,12 @@ remove_app
 RES="$APP/Contents/Resources"
 mkdir -p "$APP/Contents/MacOS" "$RES"
 cp -R "$SRC/velkey" "$SRC/icons" "$RES/"
+# Touch ID helper, built once at install time (needs Apple's command-line tools)
+if velkey_mac_touchid "$SRC/tools/macos" "$APP/Contents/MacOS/velkey-touchid" && [ -n "${VELKEY_TOUCHID:-}" ]; then
+  ok "Touch ID helper"
+else
+  say "Touch ID helper not built (Apple's command-line tools missing); Velkey works without it"
+fi
 cp "$SRC/tools/macos-env.sh" "$SRC/LICENSE" "$RES/"
 find "$RES/velkey" -name '__pycache__' -prune -exec rm -rf {} +
 
@@ -101,6 +107,7 @@ if ! velkey_mac_setup check; then
   exit 1
 fi
 export PYTHONPATH="$RES"
+[ -x "$(dirname "$0")/velkey-touchid" ] && export VELKEY_TOUCHID="$(cd "$(dirname "$0")" && pwd)/velkey-touchid"
 export VELKEY_MAC_ICON="$RES/icons/hicolor/512x512/apps/velkey.png"
 
 # Run through a copy of Homebrew Python's app program kept inside Velkey.app:

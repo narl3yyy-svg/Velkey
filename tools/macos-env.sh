@@ -76,3 +76,21 @@ import velkey.crypto as c
 c.argon2(b"x", b"saltsaltsaltsalt", 1, 64, 1)
 EOF
 }
+
+# Build the Touch ID helper (tools/macos/velkey-touchid.swift) into $2 when it
+# is missing or older than its source; sets and exports VELKEY_TOUCHID.
+# $1 = folder holding velkey-touchid.swift. Without Apple's command-line tools
+# (xcrun swiftc) Touch ID is simply not offered.
+velkey_mac_touchid() {
+  local src="$1/velkey-touchid.swift" out="$2"
+  if [ -f "$src" ] && { [ ! -x "$out" ] || [ "$src" -nt "$out" ]; }; then
+    mkdir -p "$(dirname "$out")"
+    if ! xcrun swiftc -O -o "$out.tmp" "$src" >/dev/null 2>&1; then
+      rm -f "$out.tmp"
+    else
+      mv -f "$out.tmp" "$out"
+    fi
+  fi
+  if [ -x "$out" ]; then export VELKEY_TOUCHID="$out"; fi
+  return 0
+}

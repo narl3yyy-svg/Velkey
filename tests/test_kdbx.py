@@ -63,6 +63,20 @@ class TestRoundTrip(TempDir):
         with self.assertRaises(Exception):
             kdbx.Database.open(path, "demo-master")
 
+    def test_sync_tool_touching_the_file_is_not_a_change(self):
+        path = self.path("demo.kdbx")
+        db = fast_db(path)
+        db.save()
+        st = os.stat(path)
+        os.utime(path, (st.st_atime, st.st_mtime + 30))   # what iCloud Drive / Dropbox do
+        self.assertFalse(db.changed_on_disk())
+        demo_entry(group(db, "Internet"))
+        db.save()                                          # so auto-save goes ahead
+        other = kdbx.Database.open(path, "demo-master")
+        demo_entry(group(other, "eMail"), title="Changed elsewhere")
+        other.save()                                       # another program really changed it
+        self.assertTrue(db.changed_on_disk())
+
     def test_keyfile(self):
         path, kf = self.path("demo.kdbx"), self.path("demo.keyx")
         kdbx.create_keyfile(kf)

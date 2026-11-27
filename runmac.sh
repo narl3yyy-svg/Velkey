@@ -22,6 +22,7 @@ fail() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
 velkey_mac_setup install || fail "$VELKEY_ENV_ERROR"
 velkey_mac_check_openssl "$HERE" || fail "This OpenSSL has no Argon2 (needs 3.2 or newer). Run:  brew upgrade openssl@3"
 
+velkey_mac_touchid "$HERE/tools/macos" "$HOME/Library/Application Support/Velkey/bin/velkey-touchid"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
 cd "$HERE"
 if [ "${1:-}" = "--check-autotype" ]; then   # step-by-step Auto-Type check

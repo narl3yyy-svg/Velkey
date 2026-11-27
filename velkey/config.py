@@ -5,6 +5,8 @@ DEFAULTS = {
     "recent_files": [],
     "last_file": "",
     "last_keyfiles": {},
+    "touchid": {},            # macOS: database path -> True when Touch ID unlock is set up
+    "touchid_declined": {},   # database path -> True when the user said no to the offer
     "positions": {},          # database path -> {"group": uuid, "entry": uuid}
     "window": [1180, 720],
     "maximized": False,

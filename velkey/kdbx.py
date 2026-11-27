@@ -9,6 +9,7 @@ import base64
 import copy
 import datetime as _dt
 import gzip
+import hashlib
 import io
 import os
 import struct
@@ -257,6 +258,7 @@ class Database:
         self._transformed = None    # cached transformed key for current kdf salt
         self.modified = False
         self.file_mtime = None
+        self.file_hash = None       # sha256 of the file as loaded / last saved
 
     # ---------------------------------------------------------------- open
     @classmethod
@@ -266,6 +268,7 @@ class Database:
         with open(path, "rb") as f:
             data = f.read()
         db.file_mtime = os.path.getmtime(path)
+        db.file_hash = hashlib.sha256(data).hexdigest()
         db._composite = composite_key(password, keyfile)
         db._load(data)
         return db
@@ -499,8 +502,28 @@ class Database:
         os.replace(tmp, path)
         self.path = path
         self.file_mtime = os.path.getmtime(path)
+        self.file_hash = hashlib.sha256(data).hexdigest()
         self.version = (4, 1)
         self.modified = False
+
+    def changed_on_disk(self):
+        """True if another program changed the file since it was loaded / saved.
+        A newer timestamp alone does not count: iCloud Drive, Dropbox and other
+        sync tools touch files without changing them."""
+        if not self.path or not self.file_mtime or not os.path.exists(self.path):
+            return False
+        if abs(os.path.getmtime(self.path) - self.file_mtime) <= 0.001:
+            return False
+        if self.file_hash:
+            try:
+                with open(self.path, "rb") as f:
+                    same = hashlib.sha256(f.read()).hexdigest() == self.file_hash
+            except OSError:
+                return True
+            if same:
+                self.file_mtime = os.path.getmtime(self.path)
+                return False
+        return True
 
     def serialize(self):
         if self._transformed is None:
