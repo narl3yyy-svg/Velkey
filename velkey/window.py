@@ -33,6 +33,8 @@ class _Doc:
         self.group_uuid = None   # view state, restored when switching back
         self.filter = None
         self.search = ""
+        self.pending = []        # unsaved deletions (kdbx.ChangeLog), newest last
+        self.dirty = False       # other unsaved changes
         self.page = None
         self.label = None
         self.icon = None
@@ -260,7 +262,8 @@ class MainWindow(Gtk.ApplicationWindow):
             if self.config.get("backup_on_save") and db.path not in self._backed_up and os.path.exists(db.path):
                 shutil.copy2(db.path, db.path + ".bak")
                 self._backed_up.add(db.path)
-            db.save()
+            kdbx.save_without(db, doc.pending)
+            doc.dirty = False
         except Exception as e:
             self.set_status("Could not save %s: %s" % (os.path.basename(db.path), e), 8)
         self._update_tab(doc)
@@ -338,6 +341,7 @@ class MainWindow(Gtk.ApplicationWindow):
             ("_Edit Entry…", self.edit_entry, "Return", "entry"),
             ("D_uplicate Entry", self.duplicate_entry, "<Control>k", "entry"),
             ("_Delete Entry", self.delete_entries, "Delete", "entry"),
+            ("_Undo Delete", self.undo_delete, "<Control>z", "db"),
             None,
             ("Copy to Other Data_base…", self.copy_to_other_database, None, "entry"),
             ("E_xport Selected Entries…", self.export_entries, None, "entry"),
@@ -749,10 +753,12 @@ class MainWindow(Gtk.ApplicationWindow):
             what = "  ·  %s" % (self.filter_mode[2] if len(self.filter_mode) > 2 else "Search results")
         self.status.set_text("%d of %d selected%s" % (s, n, what))
 
-    def changed(self, refresh=True):
+    def changed(self, refresh=True, deletion=False):
         if self.db is None:
             return
         self.db.modified = True
+        if not deletion:
+            self.doc.dirty = True
         if refresh:
             self.refresh_all()
         self.update_title()
@@ -852,6 +858,8 @@ class MainWindow(Gtk.ApplicationWindow):
         return False
 
     def load_db(self, db):
+        if self.doc.db is not db:
+            self.doc.pending, self.doc.dirty = [], False
         self.db = db
         self.db_path = db.path
         theme.clear_cache()
@@ -936,10 +944,27 @@ class MainWindow(Gtk.ApplicationWindow):
         self.load_db(db)
         self.set_status("Database created", 4)
 
+    def _ask_deletions(self, verb="closing"):
+        """Unsaved deletions: ask whether to save them. 'save'/'discard'/'cancel'."""
+        n = sum(1 for log in self.doc.pending for op in log.ops
+                if op[0] == "detach" and op[1].tag in ("Entry", "Group"))
+        return dialogs.ask_save(
+            self, "Save the deletion of %d %s before %s?" % (n, "item" if n == 1 else "items", verb),
+            "If you don't save it, the deleted items stay in the database file (everything else is saved).",
+            save_label="Save Deletion", discard_label="Keep Them")
+
     def confirm_close(self):
         """Ask to save changes. Returns False if the user cancelled."""
         if self.db is None or not self.db.modified:
             return True
+        if self.doc.pending:
+            r = self._ask_deletions()
+            if r == "cancel":
+                return False
+            if r == "save":
+                return self.save()
+            # keep the deleted items: save everything else, if there is anything
+            return not (self.doc.dirty and self.db.path) or self.save(quiet=True)
         if self.config.get("auto_save") and self.db.path:
             return self.save(quiet=True)
         r = dialogs.ask_save(self, "Save changes to \"%s\"?" % os.path.basename(self.db.path or "database"))
@@ -963,7 +988,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.unlock_card.set_visible(path is not None)
 
     # ================================================================== save
-    def save(self, quiet=False):
+    def save(self, quiet=False, keep_deletions=None):
+        """Save the current tab. Unsaved deletions are only written by an
+        explicit save (Ctrl+S, or answering Save); automatic saves leave them out."""
+        keep = quiet if keep_deletions is None else keep_deletions
         db = self.db
         if db is None:
             return False
@@ -986,13 +1014,40 @@ class MainWindow(Gtk.ApplicationWindow):
             cur = self.selected_group()
             if cur is not None:
                 kdbx._set_text(db.meta, "LastSelectedGroup", cur.uuid)
-            db.save()
+            if keep and self.doc.pending:
+                kdbx.save_without(db, self.doc.pending)
+            else:
+                db.save()
+                self.doc.pending = []
+            self.doc.dirty = False
         except Exception as e:
             dialogs.error(self, "Saving failed", str(e))
             return False
         self.update_title()
-        self.set_status("Saved", 3)
+        if self.doc.pending:
+            self.set_status("Saved, except the deletion (Ctrl+S saves it, Ctrl+Z undoes it)", 6)
+        else:
+            self.set_status("Saved", 3)
         return True
+
+    def _autosave_entry(self):
+        """After Add / Edit → OK."""
+        if self.db is not None and self.db.path and self.config.get("autosave_entries") \
+                and not self.config.get("auto_save"):  # auto_save already saves in changed()
+            self.save(quiet=True)
+
+    def undo_delete(self):
+        if self.db is None:
+            return
+        if not self.doc.pending:
+            self.set_status("Nothing to undo", 3)
+            return
+        log = self.doc.pending.pop()
+        log.revert()
+        self.db.modified = bool(self.doc.pending) or self.doc.dirty
+        self.refresh_all()
+        self.update_title()
+        self.set_status("Deletion undone" + ("" if self.db.modified else " (the file already has these items)"), 5)
 
     def _run_busy(self, text, fn, done):
         """Run fn in a thread while keeping the UI alive (blocking caller)."""
@@ -1037,6 +1092,7 @@ class MainWindow(Gtk.ApplicationWindow):
         try:
             self.db.file_mtime = None
             self.db.save(path)
+            self.doc.pending, self.doc.dirty = [], False
         except Exception as e:
             dialogs.error(self, "Saving failed", str(e))
             return False
@@ -1314,7 +1370,15 @@ class MainWindow(Gtk.ApplicationWindow):
     def _lock_current(self, force=False):
         if self.db is None:
             return True
-        if self.db.modified:
+        if self.db.modified and self.doc.pending and not force:
+            r = self._ask_deletions("locking")
+            if r == "cancel":
+                return False
+            if r == "save" and not self.save():
+                return False
+            if r == "discard" and self.doc.dirty and self.db.path and not self.save(quiet=True):
+                return False
+        elif self.db.modified:
             if self.config.get("auto_save") and self.db.path:
                 self.save(quiet=True)
             elif not force:
@@ -2212,6 +2276,7 @@ class MainWindow(Gtk.ApplicationWindow):
             d.destroy()
             self.changed()
             self._select_entry_el(e.el)
+            self._autosave_entry()
         else:
             d.destroy()
             g.el.remove(e.el)
@@ -2240,6 +2305,7 @@ class MainWindow(Gtk.ApplicationWindow):
             if changed:
                 self.changed()
                 self._select_entry_el(e.el)
+                self._autosave_entry()
         else:
             d.destroy()
             if self.db.modified:
@@ -2255,6 +2321,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.changed()
         if last:
             self._select_entry_el(last.el)
+        self._autosave_entry()
 
     def delete_entries(self):
         sel = self.selected_entries()
@@ -2264,22 +2331,21 @@ class MainWindow(Gtk.ApplicationWindow):
         rb_enabled = kdbx._bool(self.db.meta_get("RecycleBinEnabled", "True"), True)
         in_rb = rb is not None and all(e.parent and e.parent.is_descendant_of(rb) for e in sel)
         what = ("“%s”" % sel[0].title) if len(sel) == 1 else "%d entries" % len(sel)
+        log = kdbx.ChangeLog(self.db)
         if rb_enabled and not in_rb:
             if not dialogs.confirm(self, "Move %s to the recycle bin?" % what, None, "Move to Recycle Bin"):
                 return
-            rb = self.db.recycle_bin(create=True)
+            rb = log.recycle_bin()
             for e in sel:
-                e.move_to(rb)
+                log.move(e, rb)
         else:
-            if not dialogs.confirm(self, "Permanently delete %s?" % what, "This cannot be undone.", "Delete",
-                                   destructive=True):
+            if not dialogs.confirm(self, "Permanently delete %s?" % what,
+                                   "It is not saved until you press Ctrl+S, and Ctrl+Z brings it back until then.",
+                                   "Delete", destructive=True):
                 return
             for e in sel:
-                parent = self.db.parent_of(e.el)
-                parent.remove(e.el)
-                self.db.add_deleted_object(e.uuid)
-            self.db.invalidate()
-        self.changed()
+                log.remove(e)
+        self._deleted(log, what)
 
     def add_group(self):
         if self.db is None:
@@ -2319,32 +2385,29 @@ class MainWindow(Gtk.ApplicationWindow):
         rb_enabled = kdbx._bool(self.db.meta_get("RecycleBinEnabled", "True"), True)
         in_rb = rb is not None and g.is_descendant_of(rb)
         n = len(self.db.all_entries(include_recycle=True, group=g))
+        log = kdbx.ChangeLog(self.db)
+        parent = g.parent
         if rb_enabled and not in_rb:
             if not dialogs.confirm(self, "Move group “%s” to the recycle bin?" % g.name,
                                    "It contains %d entries." % n, "Move to Recycle Bin"):
                 return
-            rb = self.db.recycle_bin(create=True)
-            g.move_to(rb)
+            log.move(g, log.recycle_bin())
         else:
             if not dialogs.confirm(self, "Permanently delete group “%s”?" % g.name,
-                                   "It contains %d entries. This cannot be undone." % n, "Delete", destructive=True):
+                                   "It contains %d entries. It is not saved until you press Ctrl+S, and "
+                                   "Ctrl+Z brings it back until then." % n, "Delete", destructive=True):
                 return
-            self._purge(g)
-        self.current_group = g.parent if g.parent and not in_rb else self.db.root_group
-        self.changed()
+            log.remove(g)
+        self.current_group = parent if parent is not None and not in_rb else self.db.root_group
+        self._deleted(log, "group “%s”" % g.name)
 
-    def _purge(self, node):
-        for el in node.el.iter():
-            if el.tag in ("Entry", "Group") and self.db.parent_of(el) is not None and \
-                    self.db.parent_of(el).tag != "History":
-                u = kdbx._text(el, "UUID")
-                if u:
-                    self.db.add_deleted_object(u)
-        parent = self.db.parent_of(node.el)
-        parent.remove(node.el)
-        if node.uuid == self.db.meta_get("RecycleBinUUID"):
-            kdbx._set_text(self.db.meta, "RecycleBinUUID", kdbx.b64(bytes(16)))
-        self.db.invalidate()
+    def _deleted(self, log, what):
+        """A deletion happened: keep it unsaved (and undoable) until Ctrl+S."""
+        if not log.ops:
+            return
+        self.doc.pending.append(log)
+        self.changed(deletion=True)
+        self.set_status("Deleted %s. Not saved yet: Ctrl+Z to undo, Ctrl+S to save." % what, 10)
 
     def empty_recycle_bin(self):
         if self.db is None:
@@ -2358,14 +2421,13 @@ class MainWindow(Gtk.ApplicationWindow):
                                "%d entries will be permanently deleted. This cannot be undone." % n,
                                "Empty Recycle Bin", destructive=True):
             return
+        log = kdbx.ChangeLog(self.db)
         for c in list(rb.el):
             if c.tag == "Entry":
-                self.db.add_deleted_object(kdbx._text(c, "UUID"))
-                rb.el.remove(c)
+                log.remove(kdbx.Entry(self.db, c))
             elif c.tag == "Group":
-                self._purge(kdbx.Group(self.db, c))
-        self.db.invalidate()
-        self.changed()
+                log.remove(kdbx.Group(self.db, c))
+        self._deleted(log, "the recycle bin contents")
 
     # ================================================================ tools
     def database_settings(self):
@@ -2390,7 +2452,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.keyfile = kf
         self.config.add_recent(self.db.path, kf)
         self.changed(refresh=False)
-        if self.save():
+        if self.save(keep_deletions=True):
             dialogs.message(self, "Master key changed", "The database has been saved with the new master key.")
 
     def password_generator(self):
@@ -2430,7 +2492,7 @@ class MainWindow(Gtk.ApplicationWindow):
             ("Ctrl+B", "Copy user name"), ("Ctrl+C", "Copy password"), ("Ctrl+T", "Copy TOTP code"),
             ("Ctrl+U", "Open URL"), ("Ctrl+Shift+U", "Copy URL"),
             ("Ctrl+I", "Add entry"), ("Enter", "Edit entry"), ("Ctrl+K", "Duplicate entry"),
-            ("Delete", "Delete entry"), ("F2", "Edit group"),
+            ("Delete", "Delete entry (saved only with Ctrl+S)"), ("Ctrl+Z", "Undo delete"), ("F2", "Edit group"),
             ("Ctrl+F / Ctrl+E", "Search"), ("Ctrl+L", "Lock workspace"), ("Ctrl+S", "Save"),
             ("Ctrl+O", "Open database (new tab)"), ("Ctrl+N", "New database"), ("Ctrl+W", "Close database tab"),
             ("Ctrl+Tab", "Next database tab"), ("Ctrl+Shift+Tab", "Previous database tab"),
@@ -2476,6 +2538,7 @@ class MainWindow(Gtk.ApplicationWindow):
         ("<Control>u", "open_url", "entry", False), ("<Control><Shift>u", "copy_url", "entry", False),
         ("<Control>v", "autotype_selected", "entry", False), ("<Control>a", "select_all", "db", False),
         ("F2", "edit_group", "group", True), ("F1", "show_shortcuts", None, True),
+        ("<Control>z", "undo_delete", "db", False),
         ("<Control>Tab", "next_tab", None, True), ("<Control><Shift>Tab", "prev_tab", None, True),
         ("<Control>Page_Down", "next_tab", None, True), ("<Control>Page_Up", "prev_tab", None, True),
     ]

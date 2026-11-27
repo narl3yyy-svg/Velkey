@@ -37,6 +37,7 @@ DEFAULTS = {
     "col_mod": False,
     "backup_on_save": True,
     "auto_save": False,
+    "autosave_entries": True,
     "open_last": True,
     "accent": "#6c8cff",
     "column_widths": {},

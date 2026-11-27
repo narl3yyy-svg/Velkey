@@ -131,5 +131,61 @@ class TestCopyExportImport(TempDir):
         self.assertEqual(self.e.password, "demo-password-2")
 
 
+class TestPendingDeletion(TempDir):
+    """Deletions can be undone, and left out of automatic saves."""
+
+    def setUp(self):
+        super().setUp()
+        self.db = fast_db(self.path("demo.kdbx"))
+        self.g = group(self.db, "Internet")
+        self.keep = demo_entry(self.g, "Example Shop")
+        self.gone = demo_entry(self.g, "Demo Forum", "alex_demo", "demo-2")
+        self.db.save()
+
+    def titles(self, db=None):
+        return sorted(e.title for e in (db or self.db).all_entries())
+
+    def on_disk(self):
+        return sorted(e.title for e in kdbx.Database.open(self.path("demo.kdbx"), "demo-master").all_entries())
+
+    def test_recycle_and_undo_restores_exact_position(self):
+        before = kdbx.ET.tostring(self.db.root)
+        log = kdbx.ChangeLog(self.db)
+        log.move(self.gone, log.recycle_bin())
+        self.assertEqual(self.titles(), ["Example Shop"])
+        log.revert()
+        self.assertEqual(kdbx.ET.tostring(self.db.root), before)
+
+    def test_permanent_delete_and_undo(self):
+        before = kdbx.ET.tostring(self.db.root)
+        log = kdbx.ChangeLog(self.db)
+        log.remove(self.gone)
+        self.assertIsNotNone(self.db.root.find("Root/DeletedObjects/DeletedObject"))
+        log.revert()
+        self.assertEqual(kdbx.ET.tostring(self.db.root), before)
+
+    def test_autosave_leaves_deletion_out(self):
+        log = kdbx.ChangeLog(self.db)
+        log.move(self.gone, log.recycle_bin())
+        demo_entry(self.g, "Sample Mail", "alex@example.org", "demo-3")  # added after the delete
+        kdbx.save_without(self.db, [log])
+        self.assertEqual(self.on_disk(), ["Demo Forum", "Example Shop", "Sample Mail"])
+        self.assertEqual(self.titles(), ["Example Shop", "Sample Mail"])  # still deleted in memory
+        self.assertTrue(self.db.modified)
+        self.db.save()  # explicit save writes the deletion
+        self.assertEqual(self.on_disk(), ["Example Shop", "Sample Mail"])
+
+    def test_two_deletions_undo_in_order(self):
+        a, b = kdbx.ChangeLog(self.db), kdbx.ChangeLog(self.db)
+        a.remove(self.gone)
+        b.move(self.keep, b.recycle_bin())
+        kdbx.save_without(self.db, [a, b])
+        self.assertEqual(self.on_disk(), ["Demo Forum", "Example Shop"])
+        b.revert()
+        self.assertEqual(self.titles(), ["Example Shop"])
+        a.revert()
+        self.assertEqual(self.titles(), ["Demo Forum", "Example Shop"])
+
+
 if __name__ == "__main__":
     unittest.main()

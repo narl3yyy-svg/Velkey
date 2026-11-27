@@ -1472,3 +1472,118 @@ def find_duplicates(entries, db):
         elif e.uuid in by_uuid:
             out.append((e, by_uuid[e.uuid], False))
     return out
+
+
+# ------------------------------------------------------------------------
+# reversible deletions: kept out of automatic saves until confirmed
+# ------------------------------------------------------------------------
+class ChangeLog:
+    """Records a deletion (move to the recycle bin, or permanent removal) as
+    small reversible steps, so it can be undone, or left out of a save and
+    put back afterwards."""
+
+    def __init__(self, db):
+        self.db = db
+        self.ops = []          # ("detach"|"attach", el, parent, idx) | ("text", el, old, new)
+        self.clean = not db.modified   # nothing else unsaved when the deletion happened
+        self.label = ""
+
+    # -- primitive steps
+    def _detach(self, el):
+        parent = self.db.parent_of(el)
+        idx = list(parent).index(el)
+        parent.remove(el)
+        self.ops.append(("detach", el, parent, idx))
+        self.db.invalidate()
+
+    def _attach(self, el, parent, idx=None):
+        idx = len(parent) if idx is None else idx
+        parent.insert(idx, el)
+        self.ops.append(("attach", el, parent, idx))
+        self.db.invalidate()
+
+    def _text(self, parent, tag, value):
+        el = parent.find(tag)
+        if el is None:
+            el = _sub(parent, tag)
+        self.ops.append(("text", el, el.text, value))
+        el.text = value
+
+    # -- deletions
+    def recycle_bin(self):
+        rb = self.db.recycle_bin()
+        if rb is not None or not _bool(self.db.meta_get("RecycleBinEnabled", "True"), True):
+            return rb
+        el = self.db._new_group_element("Recycle Bin", 43)
+        _set_text(el, "EnableAutoType", "false")
+        _set_text(el, "EnableSearching", "false")
+        _set_text(el, "IsExpanded", "False")
+        self._attach(el, self.db.root.find("Root/Group"))
+        self._text(self.db.meta, "RecycleBinUUID", _text(el, "UUID"))
+        self._text(self.db.meta, "RecycleBinChanged", fmt_time_iso(now_utc()))
+        return Group(self.db, el)
+
+    def move(self, node, group):
+        """Move an entry or group (into the recycle bin)."""
+        self._detach(node.el)
+        idx = None
+        if isinstance(node, Entry):  # entries before sub-groups, like KeePass
+            idx = next((i for i, c in enumerate(group.el) if c.tag == "Group"), None)
+        self._attach(node.el, group.el, idx)
+        self._text(_times(node.el), "LocationChanged", fmt_time_iso(now_utc()))
+        self.db.modified = True
+
+    def remove(self, node):
+        """Delete an entry or group permanently (recorded for KeePass sync)."""
+        do = self.db.root.find("Root/DeletedObjects")
+        if do is None:
+            do = _sub(self.db.root.find("Root"), "DeletedObjects")
+        when = fmt_time_iso(now_utc())
+        for el in node.el.iter():
+            if el.tag in ("Entry", "Group") and self.db.parent_of(el) is not None \
+                    and self.db.parent_of(el).tag != "History":
+                d = ET.Element("DeletedObject")
+                _sub(d, "UUID", _text(el, "UUID"))
+                _sub(d, "DeletionTime", when)
+                self._attach(d, do)
+        if isinstance(node, Group) and node.uuid == self.db.meta_get("RecycleBinUUID"):
+            self._text(self.db.meta, "RecycleBinUUID", b64(bytes(16)))
+        self._detach(node.el)
+        self.db.modified = True
+
+    # -- undo / redo
+    def revert(self):
+        for op in reversed(self.ops):
+            if op[0] == "detach":
+                op[2].insert(op[3], op[1])
+            elif op[0] == "attach":
+                op[2].remove(op[1])
+            else:
+                op[1].text = op[2]
+        self.db.invalidate()
+
+    def reapply(self):
+        for op in self.ops:
+            if op[0] == "detach":
+                op[2].remove(op[1])
+            elif op[0] == "attach":
+                op[2].insert(op[3], op[1])
+            else:
+                op[1].text = op[3]
+        self.db.invalidate()
+
+
+def save_without(db, logs, path=None):
+    """Save `db` as if the deletions in `logs` had not happened; they stay
+    in memory (unsaved) afterwards."""
+    for log in reversed(logs):
+        log.revert()
+    try:
+        db.save(path)
+    finally:
+        for log in logs:
+            log.reapply()
+        if logs:
+            db.modified = True
+            for log in logs:
+                log.clean = True  # everything except the deletions is now saved

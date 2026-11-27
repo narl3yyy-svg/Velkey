@@ -106,6 +106,16 @@ Velkey then appears in your app menu and `.kdbx` files open in it on double-clic
 | Add / edit an entry | <kbd>Ctrl</kbd>+<kbd>I</kbd> / <kbd>Enter</kbd> |
 | Save | <kbd>Ctrl</kbd>+<kbd>S</kbd> |
 
+### When Velkey saves
+
+| You… | Saved? |
+|---|---|
+| **Add** an entry and press **OK** | Yes, right away |
+| **Edit** an entry and press **OK** | Yes, right away (**Cancel** saves nothing) |
+| **Delete** an entry or group | **No.** The tab shows `*`. <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings it back, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves the deletion. Closing or locking asks you first. |
+
+Deleting by accident never reaches the file on its own: automatic saves after adding or editing write everything **except** pending deletions. You can change this in *Tools → Options → Files*.
+
 Anything you copy is **wiped from the clipboard after 12 seconds** (change it in *Tools → Options*). Velkey remembers the databases you had open, but never your passwords.
 
 ---

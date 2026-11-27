@@ -45,14 +45,15 @@ def confirm(parent, text, secondary=None, ok_label="OK", destructive=False):
     return r == Gtk.ResponseType.OK
 
 
-def ask_save(parent, text):
+def ask_save(parent, text, secondary="Your changes will be lost if you don't save them.",
+             save_label="Save", discard_label="Don't Save"):
     """Returns 'save', 'discard' or 'cancel'."""
     d = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.QUESTION,
                           buttons=Gtk.ButtonsType.NONE, text=text)
-    d.format_secondary_text("Your changes will be lost if you don't save them.")
-    d.add_button("Don't Save", 1)
+    d.format_secondary_text(secondary)
+    d.add_button(discard_label, 1)
     d.add_button("Cancel", Gtk.ResponseType.CANCEL)
-    b = d.add_button("Save", Gtk.ResponseType.OK)
+    b = d.add_button(save_label, Gtk.ResponseType.OK)
     b.get_style_context().add_class("suggested-action")
     d.set_default_response(Gtk.ResponseType.OK)
     r = d.run()
@@ -1692,7 +1693,8 @@ class OptionsDialog(Gtk.Dialog):
         page("Files", [
             ("check", "open_last", "Remember and open the last used database on startup"),
             ("check", "backup_on_save", "Keep a backup copy (.bak) of the previous file version when saving"),
-            ("check", "auto_save", "Automatically save after every change"),
+            ("check", "autosave_entries", "Save automatically when I add or edit an entry (deletions wait for Save)"),
+            ("check", "auto_save", "Automatically save after every other change too (except deletions)"),
         ])
         self.get_content_area().pack_start(nb, True, True, 0)
         self.show_all()
