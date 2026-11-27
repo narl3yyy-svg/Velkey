@@ -289,7 +289,6 @@ def find_matches(db, window_title, match_url=True, url=""):
 
 
 IS_MAC = sys.platform == "darwin"
-MAC_UNSUPPORTED = "Auto-Type is not available on macOS yet (it is Linux-only for now)."
 
 
 def session_type():
@@ -783,8 +782,9 @@ class AutoTyper:
             return self._backend
         cands = []
         if IS_MAC:
-            return None
-        if session_type() == "x11":
+            from .macos import MacTyper
+            cands.append(MacTyper())
+        elif session_type() == "x11":
             cands.append(X11Typer())
         else:
             cands.append(PortalTyper(self.config))
@@ -812,7 +812,7 @@ class AutoTyper:
         b = self.backend()
         if b is None:
             if on_done:
-                on_done(MAC_UNSUPPORTED if IS_MAC else "No keyboard emulation backend available on this system")
+                on_done("No keyboard emulation backend available on this system")
             return
         delay = int(self.config.get("autotype_delay", 10))
         actions = parse_sequence(sequence, entry)
@@ -914,6 +914,12 @@ class WindowProbe:
         On KDE, `self.last_id` is the KWin id of that window afterwards."""
         self.last_id = ""
         self.last_pid = 0
+        if IS_MAC:
+            from . import macos
+            title, app, pid = macos.frontmost()
+            self.last_pid, self.last_id = pid, str(pid or "")
+            cb(title, "velkey" if pid == os.getpid() else app)
+            return
         if self._reg is not None:
             try:
                 self._kwin(cb)
@@ -952,6 +958,9 @@ class WindowProbe:
     def activate(self, window_id=None, caption=None):
         """Bring a window to the front and give it keyboard focus (KDE only).
         Wayland does not let an app focus windows itself, KWin can."""
+        if IS_MAC:  # macOS: window_id is the app's pid; a caption means one of Velkey's own windows
+            from . import macos
+            return macos.activate(int(window_id) if window_id else os.getpid())
         if self._reg is None or not (window_id or caption):
             return False
         import json
@@ -976,6 +985,9 @@ class WindowProbe:
         """Bring the window used before Velkey to the front (KDE only), so
         Velkey ends up behind it: the topmost normal window that is not
         Velkey, preferring one on the same monitor. Returns True if tried."""
+        if IS_MAC:  # hide Velkey (like ⌘H): the app used before comes forward
+            from . import macos
+            return macos.hide_self()
         if self._reg is None:
             return False
         js = ('var ws = workspace.stackingOrder, me = workspace.activeWindow, pick = null;'
@@ -1169,12 +1181,15 @@ class GlobalHotkey:
         self._sub_rel = None
         self._released = threading.Event()
         self._released.set()
+        self._mac = None
 
     def wait_released(self, timeout=2.0):
         """Block (worker thread) until the hot key and its modifiers are let go.
         Typing while Ctrl+Alt+Shift are still held would turn every typed
         character into a shortcut instead of text."""
-        if self.backend.startswith("KDE") and self._sub_rel is not None:
+        if self.backend == "macOS":
+            self._released.wait(timeout)  # typing also waits until the modifier keys are up
+        elif self.backend.startswith("KDE") and self._sub_rel is not None:
             self._released.wait(timeout)
             time.sleep(0.25)  # the modifiers usually come up just after the key
         elif self.backend != "X11":  # X11 typing checks the real key state itself
@@ -1196,8 +1211,7 @@ class GlobalHotkey:
         desktop remembers; otherwise keep a key the user set in KDE settings."""
         self.error = None
         if IS_MAC:
-            self.backend = "unavailable"
-            self.error = MAC_UNSUPPORTED
+            self._start_mac()
             return
         if not hotkey_valid(self.spec):
             self.error = "invalid hot key %s" % self.spec
@@ -1222,8 +1236,29 @@ class GlobalHotkey:
                 self.error = str(e)
         self.backend = "external"
 
+    def _start_mac(self):
+        from . import macos
+        self.backend = "none"
+        mods, key = parse_hotkey(self.spec)
+        code = macos.hotkey_code(mods, key, NAMED_KEYS) if hotkey_valid(self.spec) else None
+        if code is None:
+            self.error = "invalid hot key %s" % self.spec
+            return
+        if self._mac is None:
+            self._mac = macos.HotKey(self._fire, self._released.set)
+        try:
+            err = self._mac.register(*code)
+        except Exception as e:
+            err = "could not register the hot key (%s)" % e
+        if err:
+            self.error = err
+        else:
+            self.backend = "macOS"
+
     def stop(self):
         self._stopped = True
+        if self._mac is not None:
+            self._mac.unregister()
         if self._sub is not None and self.conn is not None:
             self.conn.signal_unsubscribe(self._sub)
             self._sub = None

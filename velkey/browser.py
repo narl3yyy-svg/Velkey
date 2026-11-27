@@ -11,6 +11,9 @@ title ("Example Mail - Helium") can be mapped back to the page URL.
   * Firefox family (Firefox, LibreWolf, Zen, Floorp…):
     <profile>/sessionstore-backups/recovery.jsonlz4   (written every ~15 s)
 
+On macOS the same files live under ~/Library/Application Support; Safari
+keeps none we can read, so its URL comes from AppleScript (see macos.py).
+
 Only read locally, never stored or sent anywhere.
 """
 import glob
@@ -31,6 +34,8 @@ _CHROMIUM_GLOBS = [
     "~/.var/app/*/config/*/*/*/Sessions/Session_*",
     "~/snap/*/common/*/*/Sessions/Session_*",      # Snap chromium
     "~/snap/*/current/.config/*/*/Sessions/Session_*",
+    "~/Library/Application Support/*/*/Sessions/Session_*",      # macOS: Google/Chrome/Default, net.imput.helium/Default
+    "~/Library/Application Support/*/*/*/Sessions/Session_*",    # macOS: BraveSoftware/Brave-Browser/Default
 ]
 _FIREFOX_GLOBS = [
     "~/.mozilla/firefox/*/sessionstore-backups/recovery.jsonlz4",
@@ -39,6 +44,7 @@ _FIREFOX_GLOBS = [
     "~/.floorp/*/sessionstore-backups/recovery.jsonlz4",
     "~/.var/app/*/.mozilla/firefox/*/sessionstore-backups/recovery.jsonlz4",
     "~/snap/firefox/common/.mozilla/firefox/*/sessionstore-backups/recovery.jsonlz4",
+    "~/Library/Application Support/*/Profiles/*/sessionstore-backups/recovery.jsonlz4",  # macOS Firefox, Zen…
 ]
 
 _cache = {}  # path -> (mtime, size, [(title, url), ...] oldest first)

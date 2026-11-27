@@ -2095,7 +2095,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _hotkey_text(self):
         hk = self.app.hotkey
-        if hk is None or autotype.IS_MAC:
+        if hk is None:
             return ""
         if hk.backend == "external":
             return "Global Auto-Type: bind  velkey --auto-type"
@@ -2180,7 +2180,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if (cls and "velkey" in cls.lower()) or (title and title.endswith("— " + APP_NAME)):
             self._autotype_refused("Click into the login form of the site first, then use Auto-Type.")
             return
-        seq = autotype.match_sequence(e, title, True, browser.url_for_window(title))
+        seq = autotype.match_sequence(e, title, True, self._page_url(title, cls))
         if seq is None and require:
             if not title:
                 why = "Velkey could not detect the active window, so it cannot check that it belongs to “%s”." % e.title
@@ -2195,6 +2195,16 @@ class MainWindow(Gtk.ApplicationWindow):
         self.app.typer.type_sequence(e, seq or e.effective_sequence(), done, initial_delay=0.1,
                                      field_check=self._field_check(self.app.probe.last_pid))
         e.touch(modify=False)
+
+    @staticmethod
+    def _page_url(title, app=""):
+        """URL of the page in the browser window, or ''. Browser session files
+        first; on macOS, Safari's URL comes from AppleScript."""
+        url = browser.url_for_window(title)
+        if not url and autotype.IS_MAC:
+            from . import macos
+            url = macos.browser_url(app)
+        return url
 
     def _autotype_refused(self, why):
         self.deiconify()
@@ -2243,7 +2253,7 @@ class MainWindow(Gtk.ApplicationWindow):
         check = self._field_check(self.app.probe.last_pid)
         hk = self.app.hotkey
         wait = hk.wait_released if hk is not None else None
-        url = browser.url_for_window(title)
+        url = self._page_url(title, cls)
         open_dbs = [d.db for d in self.docs() if d.db is not None]  # every unlocked tab
         matches = []
         for db in open_dbs:

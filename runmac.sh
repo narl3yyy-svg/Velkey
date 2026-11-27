@@ -7,8 +7,9 @@
 #
 #   ./runmac.sh                 start Velkey
 #   ./runmac.sh file.kdbx       open a database
+#   ./runmac.sh --check-autotype   check Auto-Type step by step
 #
-# Auto-Type, the global hot key and the tray icon are Linux-only for now.
+# The tray icon is Linux-only for now.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -23,4 +24,8 @@ velkey_mac_check_openssl "$HERE" || fail "This OpenSSL has no Argon2 (needs 3.2 
 
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
 cd "$HERE"
+if [ "${1:-}" = "--check-autotype" ]; then   # step-by-step Auto-Type check
+  shift
+  exec "$PY" "$HERE/tools/mac_autotype_check.py" "$@"
+fi
 exec "$PY" -m velkey "$@"

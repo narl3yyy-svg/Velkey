@@ -116,9 +116,14 @@ This creates **Velkey.app** in your own Applications folder (`~/Applications`, n
 
 | Works on macOS | Linux-only for now |
 |---|---|
-| Open, create and edit databases, tabs, search, groups | Auto-Type and the global hot key |
-| TOTP codes, copy with ⌘C / ⌘B / ⌘T, clipboard auto-clear | Tray icon, lock when the screen locks |
-| Export / import entries, password generator, all settings | Password-box check, "switch back after copying" |
+| Open, create and edit databases, tabs, search, groups | Tray icon |
+| TOTP codes, copy with ⌘C / ⌘B / ⌘T, clipboard auto-clear | Lock when the screen locks |
+| **Auto-Type** and the global hot key <kbd>Control</kbd>+<kbd>Option</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | |
+| Export / import entries, password generator, all settings | |
+
+**Auto-Type on macOS** needs one permission: the first time, macOS asks you to allow Velkey under **System Settings → Privacy & Security → Accessibility** (when you run `./runmac.sh`, allow **Terminal** instead). Velkey reads the page address from Chrome, Brave, Edge, Helium, Vivaldi and Firefox like on Linux; for **Safari** macOS asks once whether Velkey may read Safari's address. The password-box check works in apps that report their fields (Safari and native apps); elsewhere Velkey types user name → Tab → password like KeePass.
+
+Something not working? `./runmac.sh --check-autotype` checks each step (permission, active window, page address, hot key) and says what's missing.
 
 Shortcuts work with ⌘ as well as Ctrl. Velkey uses GTK, so it looks the same as on Linux rather than like a native Mac app.
 
