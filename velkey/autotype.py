@@ -677,7 +677,11 @@ class PortalTyper:
             ok, keys = km.get_entries_for_keyval(ks)
             if not ok or not keys:
                 return None
-            keys = sorted(keys, key=lambda k: (k.group != 0, k.level))
+            # Prefer the main keyboard block (evdev 1-83: letters, digits, punctuation,
+            # the number pad) over extra keys some layouts also map, e.g. '$' on
+            # KEY_DOLLAR (434), '(' on KEY_KPLEFTPAREN (179) or '<' on the ISO key (86):
+            # many apps (browsers, XWayland) ignore those, so the character went missing.
+            keys = sorted(keys, key=lambda k: (k.group != 0, not 1 <= k.keycode - 8 <= 83, k.level))
             return keys[0]
 
         def code_of(name):

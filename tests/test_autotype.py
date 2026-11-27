@@ -106,6 +106,41 @@ class TestPasswordBox(TempDir):
 
 
 @needs_gi
+class TestKeyChoice(unittest.TestCase):
+    """Typing on Wayland: characters must go out on normal keyboard keys."""
+
+    def test_dollar_uses_shift_4_not_the_special_dollar_key(self):
+        from gi.repository import Gdk
+
+        class Key:
+            def __init__(self, evdev, level):
+                self.keycode, self.group, self.level = evdev + 8, 0, level
+
+        layout = {   # like a pc105 layout that also has KEY_DOLLAR / KEY_KPLEFTPAREN
+            Gdk.keyval_from_name("dollar"): [Key(434, 0), Key(5, 1)],
+            Gdk.keyval_from_name("parenleft"): [Key(179, 0), Key(10, 1)],
+            Gdk.keyval_from_name("less"): [Key(86, 0), Key(51, 1)],
+            Gdk.keyval_from_name("a"): [Key(30, 0)],
+            Gdk.keyval_from_name("Shift_L"): [Key(42, 0)],
+        }
+
+        class Keymap:
+            def get_entries_for_keyval(self, ks):
+                keys = layout.get(ks, [])
+                return bool(keys), keys
+        real = Gdk.Keymap.get_for_display
+        Gdk.Keymap.get_for_display = staticmethod(lambda display: Keymap())
+        try:
+            typer = autotype.PortalTyper({})
+            events = [("press", Gdk.keyval_from_name(n), frozenset()) for n in ("dollar", "parenleft", "less", "a")]
+            out = [(main, held) for _, main, held in typer.compile(events)]
+        finally:
+            Gdk.Keymap.get_for_display = real
+        self.assertEqual(out, [(("code", 5), [("code", 42)]), (("code", 10), [("code", 42)]),
+                               (("code", 51), [("code", 42)]), (("code", 30), [])])
+
+
+@needs_gi
 class TestSequence(unittest.TestCase):
     def test_braces_and_modifiers(self):
         acts = autotype.parse_sequence("{{}x{}}^a~", None)

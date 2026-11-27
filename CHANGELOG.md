@@ -5,6 +5,11 @@ While the major number is 0, Velkey is young and things may still change between
 
 The version is set in one place, [`velkey/__init__.py`](velkey/__init__.py). To release a new one: change it there, add a section here, commit, then tag it (`git tag -a v0.2.0 -m "Velkey 0.2.0"` and `git push origin v0.2.0`).
 
+## Unreleased
+
+### Fixed
+- Auto-Type on Linux Wayland (KDE) left out `$` from passwords. Some keyboard layouts also map `$`, `(`, `)` and `<` to special extra keys, which Velkey picked and many apps (browsers among them) ignore. Characters are now always typed on the normal keys, e.g. `$` as Shift+4.
+
 ## [0.1.2] – 2026-11-27
 
 ### Fixed
