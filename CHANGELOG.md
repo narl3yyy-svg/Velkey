@@ -5,7 +5,7 @@ While the major number is 0, Velkey is young and things may still change between
 
 The version is set in one place, [`velkey/__init__.py`](velkey/__init__.py). To release a new one: change it there, add a section here, commit, then tag it (`git tag -a v0.2.0 -m "Velkey 0.2.0"` and `git push origin v0.2.0`).
 
-## Unreleased
+## [0.1.6] – 2026-11-27
 
 ### Added
 - **Touch ID unlock on macOS.** After you unlock a database with its password, Velkey offers once to remember it: the password goes into this Mac's Keychain and the unlock screen then asks for your fingerprint (typing the password always works too). *File → Forget Touch ID for This Database* turns it off. Needs Apple's command-line tools, which Homebrew already installs; `runmac.sh` / `installmac.sh` build the small helper.
@@ -66,6 +66,7 @@ First numbered release.
 - Linux: `./run.sh` or `./install.sh`.
 - macOS (Apple silicon and Intel): `./runmac.sh` or `./installmac.sh` (installs `Velkey.app`).
 
+[0.1.6]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.6
 [0.1.5]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.5
 [0.1.4]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.4
 [0.1.3]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.3
