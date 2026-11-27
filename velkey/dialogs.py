@@ -269,6 +269,9 @@ class GeneratorDialog(Gtk.Dialog):
     def __init__(self, parent, config, use_mode=True):
         super().__init__(title="Password Generator", transient_for=parent, modal=True)
         self.config = config
+        # use_mode (opened from an entry): the box only shows an *example* with the
+        # chosen settings; Use Password generates a fresh password that is never shown
+        self.use_mode = use_mode
         self.set_default_size(520, -1)
         self.add_button("Close" if not use_mode else "Cancel", Gtk.ResponseType.CANCEL)
         if use_mode:
@@ -292,10 +295,23 @@ class GeneratorDialog(Gtk.Dialog):
         row = Gtk.Box(spacing=6)
         row.pack_start(self.out, True, True, 0)
         row.pack_start(regen, False, False, 0)
-        row.pack_start(copyb, False, False, 0)
+        if not use_mode:
+            row.pack_start(copyb, False, False, 0)
+        else:
+            self.out.set_editable(False)
+            self.out.set_tooltip_text("Example only: not the password that will be saved")
+            regen.set_tooltip_text("Show another example")
         g.attach(row, 0, 0, 2, 1)
         self.quality = quality_widget()
         g.attach(self.quality, 0, 1, 2, 1)
+        if use_mode:
+            note = Gtk.Label(xalign=0)
+            note.set_line_wrap(True)
+            note.get_style_context().add_class("dim")
+            note.set_text("This is only an example of what your settings make. Use Password puts a new "
+                          "password with these settings into the entry without showing it; the eye button "
+                          "in the entry reveals it.")
+            g.attach(note, 0, 5, 2, 1)
         self.out.connect("changed", lambda e: self.quality.update(e.get_text()))
 
         g.attach(key_label("Length"), 0, 2, 1, 1)
@@ -348,8 +364,16 @@ class GeneratorDialog(Gtk.Dialog):
         self.out.set_text(generate_password(self.opts))
 
     def result(self):
-        self.config.set("gen", self.collect())
-        return self.out.get_text()
+        opts = self.collect()
+        self.config.set("gen", opts)
+        if not self.use_mode:
+            return self.out.get_text()
+        example = self.out.get_text()
+        for _ in range(20):  # a new password, never the example that was on screen
+            pw = generate_password(opts)
+            if pw != example:
+                return pw
+        return pw
 
 
 # ---------------------------------------------------------------------------
