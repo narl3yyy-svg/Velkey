@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 
-from gi.repository import GLib
+from gi.repository import Gio, GLib
 
 try:
     import gi
@@ -42,6 +42,31 @@ class FieldInfo:
             self.known, self.password, self.editable, self.role, self.why)
 
 
+def bus_problem():
+    """Why the accessibility bus cannot be used, or '' if it works.
+
+    libatspi aborts the whole program (g_error) when it cannot connect, so
+    the connection is tried here first with GIO, which fails gracefully."""
+    addr = os.environ.get("AT_SPI_BUS_ADDRESS", "")
+    if not addr:
+        try:
+            conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            addr = conn.call_sync("org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress", None,
+                                  GLib.VariantType("(s)"), Gio.DBusCallFlags.NONE, 1500, None).unpack()[0]
+        except Exception:
+            return "the accessibility service (at-spi) is not running"
+    try:
+        c = Gio.DBusConnection.new_for_address_sync(
+            addr, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+            None, None)
+        c.close_sync(None)
+    except Exception as e:
+        log("bus check failed:", e)
+        return ("the accessibility service is broken (its socket is missing). Fix it with:  "
+                "systemctl --user restart at-spi-dbus-bus.service")
+    return ""
+
+
 class FocusTracker:
     def __init__(self):
         self.ok = False
@@ -49,8 +74,21 @@ class FocusTracker:
         self._last = {}  # pid -> (accessible, time)
         self._mypid = os.getpid()
         self._listener = None
+        self._tried = 0
+        self._start()
+
+    def _start(self):
+        """Connect to the accessibility bus (again). Safe to call repeatedly."""
+        if self.ok:
+            return
+        self._tried = time.time()
         if Atspi is None:
             self.error = "the AT-SPI library (gir1.2-atspi-2.0) is not installed"
+            return
+        problem = bus_problem()
+        if problem:
+            self.error = problem
+            log(problem)
             return
         try:
             Atspi.init()
@@ -128,6 +166,8 @@ class FocusTracker:
     def field(self, pid):
         """FieldInfo for the element that has keyboard focus in process `pid`.
         Main thread only."""
+        if not self.ok and time.time() - self._tried > 5:
+            self._start()  # the bus may have been fixed since Velkey started
         if not self.ok:
             return FieldInfo(False, why=self.error)
         if not pid or pid == self._mypid:
