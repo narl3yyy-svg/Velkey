@@ -613,7 +613,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.entry_view.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
         self.entry_view.get_selection().connect("changed", self._on_entry_sel)
         self.entry_view.connect("button-press-event", self._entry_button)
-        self.entry_view.connect("row-activated", lambda *_: self.edit_entry())
+        self.entry_view.connect("row-activated", self._entry_activated)
         self.entry_view.enable_model_drag_source(Gdk.ModifierType.BUTTON1_MASK, [tgt_e], Gdk.DragAction.MOVE)
         self.entry_view.connect("drag-data-get", self._entry_drag_get)
         self.columns = {}
@@ -1783,15 +1783,20 @@ class MainWindow(Gtk.ApplicationWindow):
                 view.get_selection().select_path(r[0])
             self._entry_menu(ev)
             return True
-        if ev.type == Gdk.EventType._2BUTTON_PRESS and ev.button == 1 and r:
-            col = r[1]
+        return False
+
+    def _entry_activated(self, view, path, col):
+        """Double-click: URL opens in the default browser, user name / password /
+        OTP are copied, anything else edits. Enter always edits."""
+        ev = Gtk.get_current_event()
+        if ev is not None and ev.type in (Gdk.EventType.BUTTON_PRESS, Gdk.EventType._2BUTTON_PRESS):
             key = next((k for k, (c, _r) in self.columns.items() if c is col), None)
             actions = {"user": self.copy_username, "pass": self.copy_password, "url": self.open_url,
                        "otp": self.copy_otp}
             if key in actions:
                 actions[key]()
-                return True
-        return False
+                return
+        self.edit_entry()
 
     def _entry_menu(self, ev):
         n = len(self.selected_entries())
