@@ -110,15 +110,14 @@ class MainWindow(Gtk.ApplicationWindow):
         head = Gtk.Box(spacing=6)
         doc.icon = Gtk.Image.new_from_icon_name("system-lock-screen-symbolic", Gtk.IconSize.MENU)
         doc.label = Gtk.Label()
-        doc.label.set_ellipsize(Pango.EllipsizeMode.END)
-        doc.label.set_max_width_chars(28)
+        doc.label.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
         close = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.MENU)
         close.set_relief(Gtk.ReliefStyle.NONE)
         close.set_can_focus(False)
         close.set_tooltip_text("Close this database (Ctrl+W)")
         close.connect("clicked", lambda *_: self._close_tab(doc))
         head.pack_start(doc.icon, False, False, 0)
-        head.pack_start(doc.label, True, True, 0)
+        head.pack_start(doc.label, False, False, 0)
         head.pack_start(close, False, False, 0)
         head.show_all()
         page.show()
@@ -148,6 +147,7 @@ class MainWindow(Gtk.ApplicationWindow):
         else:
             text = "Start"
         doc.label.set_text(text)
+        doc.label.set_width_chars(min(len(text), 30))  # room for the full name (long ones get "…" in the middle)
         doc.icon.set_visible(doc.db is None and bool(doc.path))
         tip = (doc.path or "").replace(os.path.expanduser("~"), "~")
         if doc.db is None and doc.path:
@@ -341,6 +341,7 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             ("Copy to Other Data_base…", self.copy_to_other_database, None, "entry"),
             ("E_xport Selected Entries…", self.export_entries, None, "entry"),
+            ("_Import Entries…", self.import_entries, None, "db"),
             None,
             ("Copy _User Name", self.copy_username, "<Control>b", "entry"),
             ("Copy _Password", self.copy_password, "<Control>c", "entry"),
@@ -1668,7 +1669,8 @@ class MainWindow(Gtk.ApplicationWindow):
         return False
 
     def _entry_menu(self, ev):
-        has = bool(self.selected_entries())
+        n = len(self.selected_entries())
+        has = bool(n)
         groups = []
 
         def walk(g, depth):
@@ -1692,14 +1694,17 @@ class MainWindow(Gtk.ApplicationWindow):
             ("Copy to Data_base", [(self._doc_name(d).replace("_", "__"), (lambda d=d: self.copy_to_database(d)))
                                    for d in self.docs() if d is not self.doc and d.db is not None]
              or [("(unlock another database in a tab first)", None)]),
-            ("E_xport Entries…", self.export_entries, None, "entry"),
-            ("_Delete Entry", self.delete_entries, "Delete", "entry"),
+            ("E_xport Selected Entry…" if n <= 1 else "E_xport %d Selected Entries…" % n,
+             self.export_entries, None, "entry"),
+            ("_Import Entries…", self.import_entries),
+            None,
+            ("_Delete Entry" if n <= 1 else "_Delete %d Entries" % n, self.delete_entries, "Delete", "entry"),
         ]
         m = Gtk.Menu()
         self._fill_menu(m, items)
         before = len(self.action_widgets)
         for mi in m.get_children():
-            if not has and isinstance(mi, Gtk.MenuItem) and mi.get_label() not in ("_Add Entry…",):
+            if not has and isinstance(mi, Gtk.MenuItem) and mi.get_label() not in ("_Add Entry…", "_Import Entries…"):
                 if not isinstance(mi, Gtk.SeparatorMenuItem):
                     mi.set_sensitive(False)
         # do not keep transient menu items in the action list
