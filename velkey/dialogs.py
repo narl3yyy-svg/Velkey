@@ -1812,6 +1812,11 @@ class OptionsDialog(Gtk.Dialog):
 class AutoTypePicker(Gtk.Window):
     def __init__(self, db, matches, window_title, on_pick):
         super().__init__(title="Auto-Type — Select Entry")
+        # Own window group: while another Velkey dialog is open (e.g. Edit Entry)
+        # GTK sends input only to that dialog's group, which left this picker
+        # frozen: no clicks, no keys, not even its close button.
+        self._group = Gtk.WindowGroup()
+        self._group.add_window(self)
         self.set_default_size(640, 380)
         self.set_position(Gtk.WindowPosition.CENTER)
         self.set_keep_above(True)
