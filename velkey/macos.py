@@ -172,6 +172,33 @@ def activate(pid):
     return False
 
 
+def set_app_name(name):
+    """Show `name` instead of "Python" in the menu bar (and Activity Monitor).
+
+    macOS reads the menu bar name from the running program's bundle, which is
+    Homebrew's Python.app. Its info dictionary can still be changed before
+    the application object exists, so this must run before GTK starts."""
+    try:
+        def ns(text):
+            return _send(_cls(b"NSString"), b"stringWithUTF8String:", ctypes.c_char_p(text.encode()))
+        objc = _lib("objc")
+        objc.sel_registerName.restype = _vp
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+        setter = objc.sel_registerName(b"setObject:forKey:")
+        value = ns(name)
+        bundle = _send(_cls(b"NSBundle"), b"mainBundle")
+        for getter in (b"localizedInfoDictionary", b"infoDictionary"):
+            info = _send(bundle, getter)
+            # only a mutable dictionary may be changed (anything else would throw)
+            if info and _send(info, b"respondsToSelector:", _vp(setter), restype=ctypes.c_bool):
+                for key in ("CFBundleName", "CFBundleDisplayName"):
+                    _send(info, b"setObject:forKey:", _vp(value), _vp(ns(key)))
+        _send(_send(_cls(b"NSProcessInfo"), b"processInfo"), b"setProcessName:", _vp(value))
+        return True
+    except Exception:
+        return False
+
+
 def hide_self():
     """[NSApp hide:nil]: Velkey steps back and the previous app comes forward."""
     try:

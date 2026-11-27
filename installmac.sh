@@ -102,6 +102,29 @@ if ! velkey_mac_setup check; then
 fi
 export PYTHONPATH="$RES"
 export VELKEY_MAC_ICON="$RES/icons/hicolor/512x512/apps/velkey.png"
+
+# Run through a copy of Homebrew Python's app program kept inside Velkey.app:
+# macOS then names the app "Velkey" (menu bar, Dock, Accessibility settings)
+# instead of "Python". Refreshed after a Python update; if the copy cannot load
+# GTK for any reason, plain Homebrew Python is used as before.
+OWN="$(cd "$(dirname "$0")" && pwd)/Velkey-python"
+STAMP="$RES/.python-stamp"
+SRC_INFO="$("$PY" -c 'import os, sys
+p = os.path.join(sys.base_prefix, "Resources/Python.app/Contents/MacOS/Python")
+print("%s %d %d" % (p, os.path.getsize(p), os.path.getmtime(p)) if os.path.isfile(p) else "")' 2>/dev/null)"
+if [ -n "$SRC_INFO" ]; then
+  if [ ! -x "$OWN" ] || [ "$(cat "$STAMP" 2>/dev/null)" != "$SRC_INFO" ]; then
+    rm -f "$OWN" "$STAMP"
+    if cp "${SRC_INFO%% *}" "$OWN" 2>/dev/null \
+       && "$OWN" -c 'import gi; gi.require_version("Gtk", "3.0")' >/dev/null 2>&1; then
+      printf '%s' "$SRC_INFO" > "$STAMP"
+    else
+      rm -f "$OWN"
+    fi
+  fi
+  [ -x "$OWN" ] && PY="$OWN"
+fi
+
 cd "$HOME"
 exec "$PY" -m velkey "$@"
 EOF

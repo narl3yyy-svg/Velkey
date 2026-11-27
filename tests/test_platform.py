@@ -37,6 +37,11 @@ class TestMacAutoType(unittest.TestCase):
         (self.at.IS_MAC, self.mac.IS_MAC, self.mac._fn, self.mac.frontmost, self.mac.HotKey,
          self.mac.focused_field) = self.saved
 
+    def test_app_name_fails_safely_without_macos(self):
+        import sys
+        if sys.platform != "darwin":
+            self.assertFalse(self.mac.set_app_name("Velkey"))  # no AppKit here: no crash, just False
+
     def test_hotkey_codes(self):
         code = self.mac.hotkey_code
         self.assertEqual(code({"Ctrl", "Alt", "Shift"}, "Z", self.at.NAMED_KEYS), (0x1000 | 0x0800 | 0x0200, 6))
