@@ -2036,9 +2036,13 @@ class MainWindow(Gtk.ApplicationWindow):
         return w
 
     def _clip_own(self, text):
-        w = self._clip_widget()
         sel = Gdk.SELECTION_CLIPBOARD
         self._clip_text = text
+        if autotype.IS_MAC:  # macOS: GTK's own clipboard talks to the system pasteboard
+            self._clip_owned = False
+            Gtk.Clipboard.get(sel).set_text(text, -1)
+            return
+        w = self._clip_widget()
         # same order as GtkClipboard: take ownership first, then announce the
         # formats (the other way round, Wayland drops the very first copy)
         self._clip_owned = Gtk.selection_owner_set(w, sel, Gtk.get_current_event_time())
@@ -2091,7 +2095,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _hotkey_text(self):
         hk = self.app.hotkey
-        if hk is None:
+        if hk is None or autotype.IS_MAC:
             return ""
         if hk.backend == "external":
             return "Global Auto-Type: bind  velkey --auto-type"
@@ -2565,6 +2569,8 @@ class MainWindow(Gtk.ApplicationWindow):
         in_text = isinstance(focus, (Gtk.Entry, Gtk.TextView))
         mods = ev.state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK |
                            Gdk.ModifierType.MOD1_MASK | Gdk.ModifierType.SUPER_MASK)
+        if autotype.IS_MAC and ev.state & (Gdk.ModifierType.META_MASK | Gdk.ModifierType.MOD2_MASK):
+            mods |= Gdk.ModifierType.CONTROL_MASK  # ⌘ works like Ctrl
         kv = Gdk.keyval_to_lower(ev.keyval)
         if ev.keyval == Gdk.KEY_ISO_Left_Tab:
             kv = Gdk.KEY_Tab

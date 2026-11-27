@@ -88,6 +88,26 @@ Velkey then appears in your app menu and `.kdbx` files open in it on double-clic
 
 **Requirements:** Python 3.8+, GTK 3 with PyGObject, and OpenSSL 3.2+. These are preinstalled on Ubuntu 24.04+, Fedora, Arch and most KDE / GNOME desktops. If anything is missing, the installer offers to install it.
 
+### 🍎 macOS (Apple silicon M1 or newer, Intel too)
+
+You need [Homebrew](https://brew.sh). Then, in Terminal:
+
+```bash
+git clone https://github.com/narl3yyy-svg/Velkey.git
+cd Velkey
+./runmac.sh
+```
+
+The first time, `runmac.sh` lists the Homebrew packages Velkey needs (GTK 3, PyGObject, OpenSSL 3, icons) and installs them after you say yes. `./run.sh` does the same on a Mac.
+
+| Works on macOS | Linux-only for now |
+|---|---|
+| Open, create and edit databases, tabs, search, groups | Auto-Type and the global hot key |
+| TOTP codes, copy with ⌘C / ⌘B / ⌘T, clipboard auto-clear | Tray icon, lock when the screen locks |
+| Export / import entries, password generator, all settings | Password-box check, "switch back after copying" |
+
+Shortcuts work with ⌘ as well as Ctrl. Velkey uses GTK, so it looks the same as on Linux rather than like a native Mac app.
+
 ---
 
 ## 🚀 Quick start

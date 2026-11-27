@@ -1,5 +1,8 @@
 #!/bin/sh
 # Velkey launcher — runs Velkey straight from this folder, no install needed.
+if [ "$(uname -s)" = "Darwin" ]; then   # macOS: GTK comes from Homebrew
+  exec "$(cd "$(dirname "$0")" && pwd)/runmac.sh" "$@"
+fi
 HERE="$(dirname "$(readlink -f "$0")")"
 [ -d "$HERE/velkey" ] || HERE="${VELKEY_HOME:-$HOME/.local/share/velkey}"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"

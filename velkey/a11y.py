@@ -264,7 +264,9 @@ class FocusClient:
         self._lines = None
         self._lock = threading.Lock()
         self._spawned = 0.0
-        self._spawn()
+        self.disabled = sys.platform == "darwin"  # AT-SPI is Linux-only
+        if not self.disabled:
+            self._spawn()
 
     def _spawn(self):
         self._spawned = time.time()
@@ -307,6 +309,8 @@ class FocusClient:
 
     def field_from_thread(self, pid, timeout=2.0):
         """FieldInfo for the focused element of process `pid`. Any thread."""
+        if self.disabled:
+            return FieldInfo(False, why="not available on macOS")
         with self._lock:
             if self._proc is None or self._proc.poll() is not None:
                 if time.time() - self._spawned < 3:

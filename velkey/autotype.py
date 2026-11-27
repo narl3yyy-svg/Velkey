@@ -17,6 +17,7 @@ import random
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -287,7 +288,13 @@ def find_matches(db, window_title, match_url=True, url=""):
     return res
 
 
+IS_MAC = sys.platform == "darwin"
+MAC_UNSUPPORTED = "Auto-Type is not available on macOS yet (it is Linux-only for now)."
+
+
 def session_type():
+    if IS_MAC:
+        return "macos"
     if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland":
         return "wayland"
     return "x11"
@@ -775,6 +782,8 @@ class AutoTyper:
         if self._backend is not None:
             return self._backend
         cands = []
+        if IS_MAC:
+            return None
         if session_type() == "x11":
             cands.append(X11Typer())
         else:
@@ -803,7 +812,7 @@ class AutoTyper:
         b = self.backend()
         if b is None:
             if on_done:
-                on_done("No keyboard emulation backend available on this system")
+                on_done(MAC_UNSUPPORTED if IS_MAC else "No keyboard emulation backend available on this system")
             return
         delay = int(self.config.get("autotype_delay", 10))
         actions = parse_sequence(sequence, entry)
@@ -1186,6 +1195,10 @@ class GlobalHotkey:
         """force=True: the user picked a new key in Velkey, override what the
         desktop remembers; otherwise keep a key the user set in KDE settings."""
         self.error = None
+        if IS_MAC:
+            self.backend = "unavailable"
+            self.error = MAC_UNSUPPORTED
+            return
         if not hotkey_valid(self.spec):
             self.error = "invalid hot key %s" % self.spec
         if is_kde() and self.conn is not None:

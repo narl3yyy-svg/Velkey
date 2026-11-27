@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import os
 import struct
+import sys
 
 __all__ = [
     "sha256", "sha512", "hmac_sha256", "aes_cbc_encrypt", "aes_cbc_decrypt",
@@ -23,16 +24,38 @@ class CryptoError(Exception):
     pass
 
 
-def _load_libcrypto():
-    names = ["libcrypto.so.3"]
-    found = ctypes.util.find_library("crypto")
+MAC_SYSTEM_LIBCRYPTO = ("/usr/lib/libcrypto.dylib", "/usr/lib/libcrypto.35.dylib", "/usr/lib/libcrypto.46.dylib")
+
+
+def libcrypto_candidates(platform=sys.platform, env=os.environ, find=ctypes.util.find_library):
+    """Where to look for OpenSSL 3, most specific first.
+
+    $VELKEY_LIBCRYPTO always wins. On macOS only Homebrew's OpenSSL is used:
+    the system /usr/lib/libcrypto.dylib aborts any app that loads it directly."""
+    names = [env["VELKEY_LIBCRYPTO"]] if env.get("VELKEY_LIBCRYPTO") else []
+    if platform == "darwin":
+        for prefix in ("/opt/homebrew", "/usr/local"):  # Apple silicon, Intel
+            names.append(prefix + "/opt/openssl@3/lib/libcrypto.3.dylib")
+        return names
+    names.append("libcrypto.so.3")
+    found = find("crypto")
     if found:
         names.append(found)
-    for n in names:
+    return names
+
+
+def _load_libcrypto():
+    for n in libcrypto_candidates():
+        if n in MAC_SYSTEM_LIBCRYPTO:
+            continue
+        if os.sep in n and not os.path.exists(n):
+            continue
         try:
             return ctypes.CDLL(n)
         except OSError:
             continue
+    if sys.platform == "darwin":
+        raise CryptoError("OpenSSL 3 from Homebrew was not found. Install it with:  brew install openssl@3")
     raise CryptoError("OpenSSL libcrypto (version 3.x) was not found on this system")
 
 
