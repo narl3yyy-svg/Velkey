@@ -83,14 +83,20 @@ def icon_pixmaps(name="velkey", sizes=(16, 22, 24, 32, 48, 64)):
         if not pb.get_has_alpha():
             pb = pb.add_alpha(False, 0, 0, 0)
         w, h, stride, px = pb.get_width(), pb.get_height(), pb.get_rowstride(), pb.get_pixels()
-        argb = bytearray()
-        for y in range(h):
-            row = px[y * stride:y * stride + w * 4]
-            for x in range(0, w * 4, 4):
-                r, g, b, a = row[x:x + 4]
-                argb += bytes((a, r, g, b))  # network byte order ARGB32
+        rgba = b"".join(px[y * stride:y * stride + w * 4] for y in range(h))
+        argb = bytearray(len(rgba))  # RGBA -> network byte order ARGB32
+        argb[0::4], argb[1::4], argb[2::4], argb[3::4] = rgba[3::4], rgba[0::4], rgba[1::4], rgba[2::4]
         out.append((w, h, bytes(argb)))
     return out
+
+
+def _pixmap_variant(pixmaps):
+    """a(iiay) built through GLib.Bytes: converting the pixels through Python
+    lists element by element is very slow (millions of objects)."""
+    items = [GLib.Variant.new_tuple(GLib.Variant("i", w), GLib.Variant("i", h),
+                                    GLib.Variant.new_from_bytes(GLib.VariantType("ay"), GLib.Bytes.new(data), True))
+             for w, h, data in pixmaps]
+    return GLib.Variant.new_array(GLib.VariantType("(iiay)"), items)
 
 
 class Tray:
@@ -100,7 +106,7 @@ class Tray:
         self.items = items
         self.icon_name = icon_name
         self.icon_path = icon_path if icon_path is not None else (ICONS_DIR if os.path.isdir(ICONS_DIR) else "")
-        self.pixmaps = icon_pixmaps(icon_name)
+        self._pixmap = _pixmap_variant(icon_pixmaps(icon_name))  # built once
         self.tooltip = "Velkey"
         self.bus = None
         self.ids = []
@@ -140,6 +146,8 @@ class Tray:
         self.ok = False
 
     def set_tooltip(self, text):
+        if text == self.tooltip:
+            return  # unchanged: don't make the panel re-read every property
         self.tooltip = text
         if self.ok:
             self.bus.emit_signal(None, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "NewToolTip", None)
@@ -153,20 +161,16 @@ class Tray:
 
     # --- SNI
     def _sni_prop(self, conn, sender, path, iface, prop):
-        v = {
-            "Category": GLib.Variant("s", "ApplicationStatus"),
-            "Id": GLib.Variant("s", "velkey"),
-            "Title": GLib.Variant("s", "Velkey"),
-            "Status": GLib.Variant("s", "Active"),
-            "WindowId": GLib.Variant("i", 0),
-            "IconName": GLib.Variant("s", self.icon_name),
-            "IconThemePath": GLib.Variant("s", self.icon_path),
-            "IconPixmap": GLib.Variant("a(iiay)", self.pixmaps),
-            "ToolTip": GLib.Variant("(sa(iiay)ss)", (self.icon_name, [], "Velkey", self.tooltip)),
-            "ItemIsMenu": GLib.Variant("b", False),
-            "Menu": GLib.Variant("o", "/MenuBar"),
-        }
-        return v.get(prop)
+        # build only the property that was asked for
+        if prop == "IconPixmap":
+            return self._pixmap
+        if prop == "ToolTip":
+            return GLib.Variant("(sa(iiay)ss)", (self.icon_name, [], "Velkey", self.tooltip))
+        v = {"Category": ("s", "ApplicationStatus"), "Id": ("s", "velkey"), "Title": ("s", "Velkey"),
+             "Status": ("s", "Active"), "WindowId": ("i", 0), "IconName": ("s", self.icon_name),
+             "IconThemePath": ("s", self.icon_path), "ItemIsMenu": ("b", False),
+             "Menu": ("o", "/MenuBar")}.get(prop)
+        return GLib.Variant(*v) if v else None
 
     def _sni_call(self, conn, sender, path, iface, method, params, inv):
         if method in ("Activate", "SecondaryActivate"):

@@ -346,4 +346,9 @@ class FocusClient:
 
 
 if __name__ == "__main__":
+    try:
+        import ctypes
+        ctypes.CDLL(None).prctl(15, b"velkey-a11y", 0, 0, 0)  # name shown in task managers
+    except Exception:
+        pass
     _serve(int(sys.argv[1]) if len(sys.argv) > 1 else 0)

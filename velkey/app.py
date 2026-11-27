@@ -151,7 +151,18 @@ class VelkeyApp(Gtk.Application):
         return 0
 
 
+def set_process_name(name):
+    """Show up as `name` (not "python3") in task managers, top, ps and pkill."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None)
+        libc.prctl(15, name.encode()[:15], 0, 0, 0)  # PR_SET_NAME
+    except Exception:
+        pass
+
+
 def main():
+    set_process_name("velkey")
     if "--version" in sys.argv[1:]:
         print("Velkey %s" % VERSION)
         return 0

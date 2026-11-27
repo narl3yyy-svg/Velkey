@@ -1,5 +1,4 @@
 """Auto-Type safety: which windows match, and the password-box rule."""
-import threading
 import unittest
 
 from tests.helpers import HAVE_GI, TempDir, demo_entry, fast_db, group, needs_gi

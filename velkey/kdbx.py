@@ -620,9 +620,6 @@ class Database:
             self.kdf["S"] = (VD_BYTES, crypto.random_bytes(32))
         self._transformed = None
 
-    def check_credentials(self, password, keyfile):
-        return composite_key(password, keyfile) == self._composite
-
     def kdf_settings(self):
         uid = self.kdf["$UUID"][1]
         if uid == KDF_AES_KDBX3:
@@ -798,14 +795,6 @@ class Database:
                     walk(c)
         walk(group.el if group else self.root.find("Root/Group"))
         return out
-
-    def add_deleted_object(self, uid):
-        do = self.root.find("Root/DeletedObjects")
-        if do is None:
-            do = _sub(self.root.find("Root"), "DeletedObjects")
-        d = _sub(do, "DeletedObject")
-        _sub(d, "UUID", uid)
-        _sub(d, "DeletionTime", fmt_time_iso(now_utc()))
 
     def custom_icon(self, uid):
         icons = self.meta.find("CustomIcons")
@@ -1488,19 +1477,28 @@ class ChangeLog:
         self.clean = not db.modified   # nothing else unsaved when the deletion happened
         self.label = ""
 
-    # -- primitive steps
+    # -- primitive steps (they keep the database's child -> parent map up to
+    # date instead of throwing it away, so deleting many items stays fast)
+    def _pmap(self):
+        db = self.db
+        return db._pmap if getattr(db, "_pmap_root", None) is db.root else None
+
     def _detach(self, el):
         parent = self.db.parent_of(el)
         idx = list(parent).index(el)
         parent.remove(el)
+        pm = self._pmap()
+        if pm is not None:
+            pm.pop(el, None)
         self.ops.append(("detach", el, parent, idx))
-        self.db.invalidate()
 
     def _attach(self, el, parent, idx=None):
         idx = len(parent) if idx is None else idx
         parent.insert(idx, el)
+        pm = self._pmap()
+        if pm is not None:
+            pm[el] = parent
         self.ops.append(("attach", el, parent, idx))
-        self.db.invalidate()
 
     def _text(self, parent, tag, value):
         el = parent.find(tag)
