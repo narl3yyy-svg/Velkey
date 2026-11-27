@@ -1,5 +1,5 @@
 """Dark theme (GTK3 CSS on top of Adwaita-dark) and KeePass icon mapping."""
-from gi.repository import Gdk, GdkPixbuf, Gtk
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 CSS = """
 @define-color pk_bg #101216;
@@ -277,9 +277,60 @@ def pixbuf_from_bytes(data, size):
         pb = loader.get_pixbuf()
         if pb and (pb.get_width() != size or pb.get_height() != size):
             pb = pb.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
-        return pb
+        return visible_on_dark(pb) if pb else None
     except Exception:
         return None
+
+
+BACKDROP = (0xE4, 0xE7, 0xEE)   # light tile behind icons that are too dark to see
+
+
+def too_dark(pb):
+    """True if almost nothing in the icon would show on Velkey's dark
+    background: black or dark grey logos on a transparent background."""
+    w, h, n, stride = pb.get_width(), pb.get_height(), pb.get_n_channels(), pb.get_rowstride()
+    px = pb.get_pixels()
+    alpha = pb.get_has_alpha()
+    seen = visible = 0
+    for y in range(h):
+        row = y * stride
+        for x in range(w):
+            i = row + x * n
+            if alpha and px[i + 3] < 64:
+                continue  # transparent: shows the background anyway
+            r, g, b = px[i], px[i + 1], px[i + 2]
+            seen += 1
+            lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+            if lum > 0.42 or (max(r, g, b) - min(r, g, b)) > 90:  # bright, or clearly coloured
+                visible += 1
+    return seen > 0 and visible < 0.15 * seen
+
+
+def visible_on_dark(pb):
+    """Put a light rounded tile behind icons that are too dark for the theme;
+    other icons are returned unchanged."""
+    if not too_dark(pb):
+        return pb
+    size = max(pb.get_width(), pb.get_height())
+    radius = max(2, size // 5)
+    tile = bytearray(size * size * 4)
+    for y in range(size):
+        for x in range(size):
+            # rounded corners: skip pixels outside the corner circles
+            cx = radius - 1 - x if x < radius else x - (size - radius) if x >= size - radius else 0
+            cy = radius - 1 - y if y < radius else y - (size - radius) if y >= size - radius else 0
+            if cx > 0 and cy > 0 and cx * cx + cy * cy > (radius - 0.5) ** 2:
+                continue
+            i = (y * size + x) * 4
+            tile[i:i + 4] = bytes(BACKDROP) + b"\xff"
+    dest = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(bytes(tile)), GdkPixbuf.Colorspace.RGB, True, 8,
+                                           size, size, size * 4)
+    dest = dest.copy()  # writable
+    pad = max(1, size // 8)
+    inner = size - 2 * pad
+    scale = inner / max(pb.get_width(), pb.get_height())
+    pb.composite(dest, pad, pad, inner, inner, pad, pad, scale, scale, GdkPixbuf.InterpType.BILINEAR, 255)
+    return dest
 
 
 def node_icon(node, size=16):
