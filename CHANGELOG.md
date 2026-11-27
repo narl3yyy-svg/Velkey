@@ -5,7 +5,7 @@ While the major number is 0, Velkey is young and things may still change between
 
 The version is set in one place, [`velkey/__init__.py`](velkey/__init__.py). To release a new one: change it there, add a section here, commit, then tag it (`git tag -a v0.2.0 -m "Velkey 0.2.0"` and `git push origin v0.2.0`).
 
-## Unreleased
+## [0.1.5] – 2026-11-27
 
 ### Changed
 - The password generator opened from an entry only shows an **example** of what your settings make. *Use Password* puts a new password with the same settings into the entry without ever showing it (the entry's eye button reveals it). The copy button is gone there. *Tools → Password Generator* still shows and copies the real password.
@@ -57,6 +57,7 @@ First numbered release.
 - Linux: `./run.sh` or `./install.sh`.
 - macOS (Apple silicon and Intel): `./runmac.sh` or `./installmac.sh` (installs `Velkey.app`).
 
+[0.1.5]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.5
 [0.1.4]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.4
 [0.1.3]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.3
 [0.1.2]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.2
