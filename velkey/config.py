@@ -12,6 +12,7 @@ DEFAULTS = {
     "show_details": True,
     "show_toolbar": True,
     "clipboard_timeout": 12,
+    "back_after_copy": True,
     "lock_idle_minutes": 0,
     "lock_on_screensaver": True,
     "lock_on_minimize": False,

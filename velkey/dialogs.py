@@ -1665,6 +1665,7 @@ class OptionsDialog(Gtk.Dialog):
 
         page("Security", [
             ("spin", "clipboard_timeout", "Clear clipboard after", 0, 3600, "seconds (0 = never)"),
+            ("check", "back_after_copy", "After copying, switch back to the window I was using (Velkey goes behind it)"),
             ("spin", "lock_idle_minutes", "Lock after inactivity", 0, 1440, "minutes (0 = never)"),
             ("check", "lock_on_screensaver", "Lock when the session is locked / screensaver starts"),
             ("check", "lock_on_minimize", "Lock when the window is minimized"),

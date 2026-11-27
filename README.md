@@ -116,6 +116,8 @@ Velkey then appears in your app menu and `.kdbx` files open in it on double-clic
 
 Deleting by accident never reaches the file on its own: automatic saves after adding or editing write everything **except** pending deletions. You can change this in *Tools → Options → Files*.
 
+After you copy something, Velkey **steps back**: the window you were using (e.g. your browser) comes to the front, so you can paste right away. On KDE it picks the window on the same monitor; turn it off in *Tools → Options → Security*.
+
 Anything you copy is **wiped from the clipboard after 12 seconds** (change it in *Tools → Options*). Velkey remembers the databases you had open, but never your passwords.
 
 ---

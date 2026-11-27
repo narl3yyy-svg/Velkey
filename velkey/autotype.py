@@ -963,6 +963,28 @@ class WindowProbe:
         GLib.timeout_add(1500, lambda: (cleanup(), False)[1])
         return True
 
+    def focus_previous(self, pid):
+        """Bring the window used before Velkey to the front (KDE only), so
+        Velkey ends up behind it: the topmost normal window that is not
+        Velkey, preferring one on the same monitor. Returns True if tried."""
+        if self._reg is None:
+            return False
+        js = ('var ws = workspace.stackingOrder, me = workspace.activeWindow, pick = null;'
+              'function ok(w) {'
+              '  return w && w.pid != %d && w.normalWindow && !w.minimized && !w.skipTaskbar &&'
+              '    (w.onAllDesktops || !w.desktops || w.desktops.indexOf(workspace.currentDesktop) >= 0);'
+              '}'
+              'for (var i = ws.length - 1; i >= 0 && !pick; i--)'
+              '  if (ok(ws[i]) && (!me || ws[i].output == me.output)) pick = ws[i];'
+              'for (var j = ws.length - 1; j >= 0 && !pick; j--) if (ok(ws[j])) pick = ws[j];'
+              'if (pick) workspace.activeWindow = pick;' % int(pid))
+        try:
+            cleanup = self._run_kwin(js)
+        except Exception:
+            return False
+        GLib.timeout_add(1500, lambda: (cleanup(), False)[1])
+        return True
+
     def _run_kwin(self, js):
         """Load and run a one-shot KWin script; returns a function that unloads it."""
         fd, path = tempfile.mkstemp(suffix=".js", prefix="velkey-")

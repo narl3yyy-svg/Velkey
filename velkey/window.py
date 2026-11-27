@@ -1997,6 +1997,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self.set_status("%s is empty" % what, 3)
             return
         self._clip_own(text)
+        self._back_to_previous()
         timeout = int(self.config.get("clipboard_timeout"))
         if self._clip_timer:
             GLib.source_remove(self._clip_timer)
@@ -2007,6 +2008,17 @@ class MainWindow(Gtk.ApplicationWindow):
             self.set_status("%s copied to clipboard" % what, 4)
         else:
             self.set_status("%s copied to clipboard" % what, 4)
+
+    def _back_to_previous(self):
+        """After a copy from the main window, hand focus back to the window the
+        user was working in (e.g. the browser), so Velkey falls behind it."""
+        if not self.config.get("back_after_copy") or not self.is_active():
+            return  # copied from a dialog, or Velkey is not in front anyway
+        if self.app.probe.focus_previous(os.getpid()):
+            return
+        win = self.get_window()
+        if win is not None and autotype.session_type() == "x11":
+            win.lower()
 
     # The clipboard is offered with KDE's password-manager hint so clipboard
     # managers (Klipper, CopyQ…) do not keep the password in their history.
