@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+# never commit keys or databases
+*.kdbx
+*.kdbx.bak
+*.key
+*.keyx
+id_*
+*_deploy
+*_deploy.pub
+
+# editor lock files
+.~lock.*

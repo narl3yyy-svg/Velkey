@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20263a"/>
+      <stop offset="1" stop-color="#0c0e14"/>
+    </linearGradient>
+    <linearGradient id="v" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9fb4ff"/>
+      <stop offset=".55" stop-color="#6c8cff"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".42" r=".5">
+      <stop offset="0" stop-color="#6c8cff" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#6c8cff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="56" fill="url(#bg)"/>
+  <rect x="12" y="12" width="232" height="232" rx="56" fill="url(#glow)"/>
+  <rect x="13" y="13" width="230" height="230" rx="55" fill="none" stroke="#fff" stroke-opacity=".09" stroke-width="2"/>
+  <!-- V: two blades meeting at the bottom, right blade cut with key teeth -->
+  <path fill="url(#v)" d="M52 58h44l32 92 32-92h44L191.7 90H179.7L175.9 101H187.5L183.3 112H171.3L167.5 123H179.1L148 204h-40z"/>
+  <!-- keyhole in the notch -->
+  <circle cx="128" cy="78" r="18" fill="url(#v)"/>
+  <path fill="#0c0e14" d="M128 70a8 8 0 0 1 4.5 14.6l3 11.4h-15l3-11.4A8 8 0 0 1 128 70z"/>
+</svg>
