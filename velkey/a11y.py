@@ -128,18 +128,40 @@ class FocusTracker:
         name = acc.get_role_name()
         return focused, FieldInfo(True, password, editable or password, name)
 
-    def _find_focused(self, pid, budget=0.6):
-        """Look for the focused element of process `pid` directly (used when
-        no focus event was seen, e.g. the field was clicked before Velkey started)."""
+    def _apps(self, pid):
         desktop = Atspi.get_desktop(0)
-        end = time.time() + budget
         for i in range(desktop.get_child_count()):
             app = desktop.get_child_at_index(i)
             try:
-                if app is None or app.get_process_id() != pid:
-                    continue
+                if app is not None and app.get_process_id() == pid:
+                    yield app
             except Exception:
                 continue
+
+    def _why_unknown(self, pid):
+        """Explain why no focused field was found for `pid`."""
+        apps = list(self._apps(pid))
+        if not apps:
+            return "the app is not connected to the accessibility system; restart it"
+        try:
+            name = apps[0].get_name() or "the app"
+            def real_children(x):
+                return [c for c in (x.get_child_at_index(k) for k in range(x.get_child_count())) if c is not None]
+            # Chromium with accessibility off: windows claim children but return none
+            empty = all(not real_children(f) for a in apps for f in real_children(a))
+        except Exception:
+            name, empty = "the app", False
+        if empty:
+            return ("%s has its accessibility support switched off. For Chromium-based browsers start them "
+                    "with --force-renderer-accessibility, or turn on chrome://accessibility → "
+                    "Native accessibility API support" % name)
+        return "%s does not report its focused field to the accessibility system" % name
+
+    def _find_focused(self, pid, budget=0.6):
+        """Look for the focused element of process `pid` directly (used when
+        no focus event was seen, e.g. the field was clicked before Velkey started)."""
+        end = time.time() + budget
+        for app in self._apps(pid):
             stack = [app]
             seen = 0
             while stack and time.time() < end and seen < 6000:
@@ -188,7 +210,11 @@ class FocusTracker:
         except Exception as e:
             log("query error", e)
             return FieldInfo(False, why="the app did not answer (%s)" % e)
-        return FieldInfo(False, why="the app does not report its focused field to the accessibility system")
+        try:
+            why = self._why_unknown(pid)
+        except Exception:
+            why = "the app does not report its focused field to the accessibility system"
+        return FieldInfo(False, why=why)
 
     def field_from_thread(self, pid, timeout=2.0):
         """field() for worker threads: runs on the main loop and waits."""

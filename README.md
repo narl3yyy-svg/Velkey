@@ -161,11 +161,9 @@ Velkey checks **which field the cursor is in** before it types your password:
 |---|---|
 | The **password box** | Types only the password (and Enter). The user name part is skipped |
 | The **user name box** | Types the user name and Tab. It types the password **only if** the cursor then lands in a password box. Otherwise it stops and tells you |
-| Anything Velkey can't identify | Types nothing |
-
 On two-step logins (Google, Microsoft…), press the shortcut once on the user name page, click **Next**, then click the password box and press it again.
 
-Velkey reads the field type through the Linux accessibility system (AT-SPI), the same thing screen readers use. You can turn this check off in *Tools → Options → Auto-Type*, but it's on by default.
+Velkey reads the field type through the Linux accessibility system (AT-SPI), the same thing screen readers use. This works automatically in **Firefox** and in regular desktop apps. **Chrome, Helium, Brave and other Chromium browsers** don't report their fields unless their accessibility is turned on, so there Velkey types the usual *user name → Tab → password*, like KeePass does. The site check above still applies, so nothing is ever typed into the wrong site. There's nothing to set up either way.
 
 If nothing matches, **nothing is typed**. You can relax this in *Tools → Options → Auto-Type → "Only type into a window that matches the entry"*, but it's on by default for your safety.
 
@@ -279,19 +277,11 @@ velkey --version
 </details>
 
 <details>
-<summary><b>"Velkey cannot tell which field is selected"</b></summary>
+<summary><b>Can I get the password-box check in Chrome / Helium / Brave too?</b></summary>
 
 <br>
 
-The app didn't report its focused field to the accessibility system. To see what Velkey sees, start it from a terminal with:
-
-```bash
-VELKEY_DEBUG=1 ./run.sh
-```
-
-Click a password box in your browser. A line like `[velkey a11y] focus pid=… role=password text` should appear.
-
-If nothing appears for a **Chromium-based browser** (Chrome, Helium, Brave, Vivaldi, Edge), start the browser with `--force-renderer-accessibility` (add it to the end of the `Exec=` line in its `.desktop` file). Firefox reports fields out of the box. Your desktop's accessibility service must also be running (it is by default on KDE and GNOME).
+Yes, optionally. Those browsers only report their fields when started with `--force-renderer-accessibility` (add it to the end of the `Exec=` line in the browser's `.desktop` file), or for one session via `chrome://accessibility` → *Native accessibility API support*. To see what Velkey sees, run `VELKEY_DEBUG=1 ./run.sh` and click a password box. A line like `[velkey a11y] focus … role=password text` should appear.
 
 </details>
 

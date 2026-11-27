@@ -832,16 +832,18 @@ class AutoTyper:
                         wait_before()
                     time.sleep(initial_delay)
                     start = 0
-                    if field_check is not None and len(compiled) > 1:
-                        info = field_check(False)
+                    check = field_check if len(compiled) > 1 else None
+                    if check is not None:
+                        info = check(False)
                         if not info.known:
-                            raise PasswordFieldError(
-                                "Nothing was typed: Velkey cannot tell which field is selected (%s)." % info.why)
-                        if info.password:
+                            # the app does not report its fields (e.g. Chrome/Helium by default):
+                            # type the whole sequence like KeePass does; the window/URL was checked
+                            check = None
+                        elif info.password:
                             start = 1  # already in the password box: just the password (and Enter)
                     for i in range(start, len(compiled)):
-                        if i > 0 and field_check is not None and not (i == 1 and start == 1):
-                            info = field_check(True)
+                        if i > 0 and check is not None and not (i == 1 and start == 1):
+                            info = check(True)
                             if not info.password:
                                 raise PasswordFieldError(
                                     "The user name was typed, but the password was not: the cursor is not in "
