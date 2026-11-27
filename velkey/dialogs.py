@@ -373,6 +373,7 @@ class IconPicker(Gtk.Dialog):
         self.std.set_max_children_per_line(14)
         self.std.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.std.set_homogeneous(True)
+        self.std.set_activate_on_single_click(False)  # click selects, double-click chooses
         for i, (name, _n) in enumerate(theme.KP_ICONS):
             img = Gtk.Image.new_from_pixbuf(theme.kp_icon(i, 24))
             img.set_tooltip_text(name)
@@ -389,6 +390,7 @@ class IconPicker(Gtk.Dialog):
         self.cust = Gtk.FlowBox()
         self.cust.set_max_children_per_line(14)
         self.cust.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.cust.set_activate_on_single_click(False)  # click selects (e.g. to delete), double-click chooses
         self.cust.connect("child-activated", lambda *_: self.response(Gtk.ResponseType.OK))
         self.cust.connect("selected-children-changed", self._cust_sel)
         self._fill_custom(custom_uuid)
