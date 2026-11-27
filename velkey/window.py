@@ -1866,9 +1866,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if not text:
             self.set_status("%s is empty" % what, 3)
             return
-        cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
-        cb.set_text(text, -1)
-        self._clip_text = text
+        self._clip_own(text)
         timeout = int(self.config.get("clipboard_timeout"))
         if self._clip_timer:
             GLib.source_remove(self._clip_timer)
@@ -1879,6 +1877,46 @@ class MainWindow(Gtk.ApplicationWindow):
             self.set_status("%s copied to clipboard" % what, 4)
         else:
             self.set_status("%s copied to clipboard" % what, 4)
+
+    # The clipboard is offered with KDE's password-manager hint so clipboard
+    # managers (Klipper, CopyQ…) do not keep the password in their history.
+    # Velkey remembers whether it still owns the clipboard instead of reading
+    # it back: on Wayland another app's clipboard cannot be read without focus.
+    _CLIP_TARGETS = ("UTF8_STRING", "text/plain;charset=utf-8", "text/plain", "TEXT", "STRING", "COMPOUND_TEXT",
+                     "x-kde-passwordManagerHint")
+
+    def _clip_widget(self):
+        w = getattr(self, "_clip_w", None)
+        if w is None:
+            w = self._clip_w = Gtk.Invisible()
+            w.connect("selection-get", self._clip_get)
+            w.connect("selection-clear-event", self._clip_lost)
+        return w
+
+    def _clip_own(self, text):
+        w = self._clip_widget()
+        sel = Gdk.SELECTION_CLIPBOARD
+        self._clip_text = text
+        Gtk.selection_clear_targets(w, sel)
+        for i, t in enumerate(self._CLIP_TARGETS):
+            Gtk.selection_add_target(w, sel, Gdk.Atom.intern(t, False), i)
+        self._clip_owned = Gtk.selection_owner_set(w, sel, Gtk.get_current_event_time())
+        if not self._clip_owned:  # fall back to plain GTK (no hint)
+            Gtk.Clipboard.get(sel).set_text(text, -1)
+
+    def _clip_get(self, w, data, info, _time):
+        if self._clip_text is None:
+            return
+        if self._CLIP_TARGETS[info] == "x-kde-passwordManagerHint":
+            data.set(data.get_target(), 8, b"secret")
+        else:
+            data.set_text(self._clip_text, -1)
+
+    def _clip_lost(self, *_):
+        # something else was copied: it is not ours to clear any more
+        self._clip_owned = False
+        self._clip_text = None
+        return False
 
     def _clip_expire(self):
         self._clip_timer = None
@@ -1892,16 +1930,15 @@ class MainWindow(Gtk.ApplicationWindow):
         self._clip_text = None
         self._clip_deadline = 0
         self.status_right.set_text(self._hotkey_text())
-        cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
-
-        def got(clip, text):
-            if text == ours:
-                clip.set_text("", -1)
-                clip.clear()
-        try:
-            cb.request_text(got)
-        except Exception:
-            cb.set_text("", -1)
+        if getattr(self, "_clip_owned", False):
+            self._clip_owned = False
+            Gtk.selection_owner_set(None, Gdk.SELECTION_CLIPBOARD, Gtk.get_current_event_time())
+        else:
+            # fallback path (plain set_text): clear only if it still holds our text
+            cb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+            if cb.wait_is_text_available() and cb.wait_for_text() == ours:
+                cb.set_text("", -1)
+                cb.clear()
         if self._clip_timer:
             GLib.source_remove(self._clip_timer)
             self._clip_timer = None
