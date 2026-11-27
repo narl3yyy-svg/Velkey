@@ -141,6 +141,62 @@ class TestKeyChoice(unittest.TestCase):
 
 
 @needs_gi
+class TestPasteUnknownCharacters(unittest.TestCase):
+    """Characters the keyboard layout has no key for (é, ß on a US layout) are pasted."""
+
+    def setUp(self):
+        from gi.repository import Gdk
+
+        class Key:
+            def __init__(self, evdev, level):
+                self.keycode, self.group, self.level = evdev + 8, 0, level
+
+        layout = {Gdk.keyval_from_name(n): [Key(code, 0)] for n, code in
+                  (("a", 30), ("v", 47), ("Control_L", 29), ("Shift_L", 42))}
+
+        class Keymap:
+            def get_entries_for_keyval(self, ks):
+                keys = layout.get(ks, [])
+                return bool(keys), keys
+        self.real = Gdk.Keymap.get_for_display
+        Gdk.Keymap.get_for_display = staticmethod(lambda display: Keymap())
+
+    def tearDown(self):
+        from gi.repository import Gdk
+        Gdk.Keymap.get_for_display = self.real
+
+    def events(self, text):
+        return [e for e in autotype.flatten([("text", text)], 0)]
+
+    def test_compile_pastes_runs_of_unknown_characters(self):
+        t = autotype.PortalTyper({})
+        t.paste_hook = lambda text: None
+        out = t.compile(self.events("aéßa"))
+        kinds = [(e[0], e[1] if e[0] == "paste" else e[1][1]) for e in out if e[0] != "sleep"]
+        self.assertEqual(kinds, [("press", 30), ("paste", "éß"), ("press", 30)])
+
+    def test_run_order_clipboard_ctrl_v_blank(self):
+        t = autotype.PortalTyper({})
+        log = []
+        t.paste_hook = lambda text: log.append(("clipboard", text))
+        t.session = "/session"
+        t.bus = type("Bus", (), {"call_sync": lambda self, d, p, i, method, v, *a: log.append(
+            (method[-7:], v.unpack()[2], v.unpack()[3]))})()
+        autotype.time.sleep, real_sleep = (lambda s: None), autotype.time.sleep
+        try:
+            t.run(t.compile(self.events("é")))
+        finally:
+            autotype.time.sleep = real_sleep
+        self.assertEqual(log, [("clipboard", "é"), ("Keycode", 29, 1), ("Keycode", 47, 1), ("Keycode", 47, 0),
+                               ("Keycode", 29, 0), ("clipboard", None)])
+
+    def test_option_off_keeps_old_behaviour(self):
+        t = autotype.PortalTyper({})   # no paste hook: falls back to sending the keysym
+        out = t.compile(self.events("é"))
+        self.assertEqual(out[0][1][0], "sym")
+
+
+@needs_gi
 class TestSequence(unittest.TestCase):
     def test_braces_and_modifiers(self):
         acts = autotype.parse_sequence("{{}x{}}^a~", None)

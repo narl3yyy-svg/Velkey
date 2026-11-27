@@ -1778,6 +1778,7 @@ class OptionsDialog(Gtk.Dialog):
             ("check", "autotype_match_url", "Also match an entry by its URL / domain (e.g. google.com ↔ “Google — Firefox”)"),
             ("check", "autotype_require_match", "Only type into a window that matches the entry (recommended)"),
             ("check", "autotype_password_field_only", "Only type the password into a password box (in apps that report their fields)"),
+            ("check", "autotype_paste_unknown", "Paste characters my keyboard layout cannot type (é, ß, ¼…) through the clipboard"),
             ("check", "autotype_always_show_dialog", "Always show the entry selection dialog"),
             ("check", "autotype_minimize_after", "Minimize Velkey after Auto-Type from the main window"),
         ])

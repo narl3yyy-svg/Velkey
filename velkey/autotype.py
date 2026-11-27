@@ -582,6 +582,7 @@ class PortalTyper:
     IFACE = "org.freedesktop.portal.RemoteDesktop"
 
     def __init__(self, config):
+        self.paste_hook = None  # set by AutoTyper: puts text on the clipboard (main thread)
         self.config = config
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
         self.session = None
@@ -689,14 +690,26 @@ class PortalTyper:
             return k.keycode - 8 if k else None
         modcodes = {m: code_of(n) for m, n in MOD_KEYSYMS.items()}
         lvl3 = code_of("ISO_Level3_Shift")
+        v_key = lookup(_char_keysym("v"))
+        can_paste = self.paste_hook is not None and modcodes["ctrl"] is not None and v_key is not None
         out = []
         for ev in events:
             if ev[0] == "sleep":
-                out.append(ev)
+                if not (out and out[-1][0] == "paste"):  # keep a run of pasted characters together
+                    out.append(ev)
                 continue
             _, ks, mods = ev
             k = lookup(ks)
             held = [("code", modcodes[m]) for m in mods if modcodes.get(m) is not None]
+            uni = Gdk.keyval_to_unicode(ks)
+            if can_paste and not mods and uni and (k is None or k.group != 0 or k.level > 3):
+                # no key for it in this layout (é, ß, ¼ on a US keyboard): the compositor
+                # would drop it, so it is pasted instead
+                if out and out[-1][0] == "paste":
+                    out[-1] = ("paste", out[-1][1] + chr(uni), out[-1][2], out[-1][3])
+                else:
+                    out.append(("paste", chr(uni), ("code", modcodes["ctrl"]), ("code", v_key.keycode - 8)))
+                continue
             if k is not None and k.group == 0 and k.level <= 3:
                 if k.level in (1, 3) and modcodes["shift"] is not None:
                     held.append(("code", modcodes["shift"]))
@@ -725,6 +738,19 @@ class PortalTyper:
         for ev in compiled:
             if ev[0] == "sleep":
                 time.sleep(ev[1])
+                continue
+            if ev[0] == "paste":
+                _, text, ctrl, v = ev
+                self.paste_hook(text)          # on the clipboard, marked secret
+                try:
+                    time.sleep(0.05)
+                    send(ctrl, True)
+                    send(v, True)
+                    send(v, False)
+                    send(ctrl, False)
+                    time.sleep(0.3)            # the app fetches the text now
+                finally:
+                    self.paste_hook(None)      # blank the clipboard again
                 continue
             _, main, held = ev
             for h in held:
@@ -780,6 +806,23 @@ class AutoTyper:
         self.config = config
         self._backend = None
         self.busy = False
+        self.clipboard = None   # set by the window: clipboard(text or None), main thread only
+
+    def _paste(self, text, timeout=2.0):
+        """Worker thread: put `text` on the clipboard (None = blank it) via the
+        main thread, and wait until that is done."""
+        if self.clipboard is None:
+            raise TyperError("cannot type %r: this keyboard layout has no key for it" % (text or ""))
+        done = threading.Event()
+
+        def run():
+            try:
+                self.clipboard(text)
+            finally:
+                done.set()
+            return False
+        GLib.idle_add(run)
+        done.wait(timeout)
 
     def backend(self):
         if self._backend is not None:
@@ -796,6 +839,8 @@ class AutoTyper:
         for c in cands:
             try:
                 if c.available():
+                    if hasattr(c, "paste_hook") and self.config.get("autotype_paste_unknown", True):
+                        c.paste_hook = self._paste
                     self._backend = c
                     return c
             except Exception:

@@ -50,6 +50,7 @@ class MainWindow(Gtk.ApplicationWindow):
         super().__init__(application=app, title=APP_NAME)
         self.app = app
         self.config = app.config
+        app.typer.clipboard = self._autotype_clipboard  # for characters Auto-Type must paste
         self._docs = {}  # notebook page -> _Doc
         self.doc = _Doc()
         self.current_group = None
@@ -2102,6 +2103,13 @@ class MainWindow(Gtk.ApplicationWindow):
     # it back: on Wayland another app's clipboard cannot be read without focus.
     _CLIP_TARGETS = ("UTF8_STRING", "text/plain;charset=utf-8", "text/plain", "TEXT", "STRING", "COMPOUND_TEXT",
                      "x-kde-passwordManagerHint")
+
+    def _autotype_clipboard(self, text):
+        """Auto-Type pastes characters the keyboard layout has no key for:
+        put them on the clipboard (marked secret), or blank it (text=None)."""
+        self._clip_own("" if text is None else text)
+        if text is None:
+            self._clip_text = None
 
     def _clip_widget(self):
         w = getattr(self, "_clip_w", None)

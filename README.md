@@ -227,6 +227,10 @@ When the URL is known, a page that only *looks* right (same title, different dom
 > [!NOTE]
 > Browsers save their tab list about 2 seconds after a page loads. If you press the hot key the instant a page appears, Velkey waits a moment and checks again.
 
+### Accented letters and symbols your keyboard doesn't have
+
+On Wayland Velkey types with the keys of your keyboard layout. Characters your layout has no key for (`é`, `ß`, `¼` on a US keyboard) are **pasted** instead: Velkey puts just those on the clipboard (marked secret, so clipboard history ignores them), presses <kbd>Ctrl</kbd>+<kbd>V</kbd>, and blanks the clipboard again. Turn it off in *Tools → Options → Auto-Type* if you prefer.
+
 ### The password only goes into a password box
 
 Velkey checks **which field the cursor is in** before it types your password:
