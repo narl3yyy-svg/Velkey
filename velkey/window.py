@@ -1958,12 +1958,15 @@ class MainWindow(Gtk.ApplicationWindow):
         w = self._clip_widget()
         sel = Gdk.SELECTION_CLIPBOARD
         self._clip_text = text
-        Gtk.selection_clear_targets(w, sel)
-        for i, t in enumerate(self._CLIP_TARGETS):
-            Gtk.selection_add_target(w, sel, Gdk.Atom.intern(t, False), i)
+        # same order as GtkClipboard: take ownership first, then announce the
+        # formats (the other way round, Wayland drops the very first copy)
         self._clip_owned = Gtk.selection_owner_set(w, sel, Gtk.get_current_event_time())
         if not self._clip_owned:  # fall back to plain GTK (no hint)
             Gtk.Clipboard.get(sel).set_text(text, -1)
+            return
+        Gtk.selection_clear_targets(w, sel)
+        for i, t in enumerate(self._CLIP_TARGETS):
+            Gtk.selection_add_target(w, sel, Gdk.Atom.intern(t, False), i)
 
     def _clip_get(self, w, data, info, _time):
         if self._clip_text is None:
@@ -2044,9 +2047,10 @@ class MainWindow(Gtk.ApplicationWindow):
             return
         left = cfg.remaining()
         if left <= 4:
-            # the code would expire before it can be pasted: hand out the next one instead
-            self.set_status("Fresh TOTP code in %d s…" % left, left + 1)
-            GLib.timeout_add(int(left * 1000) + 150, lambda: (self.copy(cfg.code(), "TOTP code"), False)[1])
+            # the code expires before it can be pasted: copy the next one right away
+            # (copying later, from a timer, could happen after you left Velkey)
+            self.copy(cfg.code(time.time() + cfg.period), "TOTP code")
+            self.set_status("Next TOTP code copied (the current one expires in %d s)" % left, 5)
             return
         self.copy(cfg.code(), "TOTP code")
 

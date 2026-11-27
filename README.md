@@ -140,7 +140,7 @@ Copies keep everything: password, 2FA code, attachments, icon, Auto-Type rules a
 4. Click **OK**, then type the code from Velkey into the website to finish setup.
 
 > [!TIP]
-> Paste the **setup key**, not the 6-digit code. Velkey warns you if you paste a code by mistake. If you copy a code with only a few seconds left, Velkey waits for the next one so it doesn't expire before you can paste it.
+> Paste the **setup key**, not the 6-digit code. Velkey warns you if you paste a code by mistake. If you copy a code with only a few seconds left, Velkey copies the next code instead, so it doesn't expire before you can paste it.
 
 Codes are stored in the standard KeePass 2.47+ format, so they work in KeePass, KeePassXC and mobile apps too. Velkey also reads codes created by KeePassXC, KeeOtp and Steam Guard.
 
