@@ -13,6 +13,7 @@ SNI_XML = """<node>
   <property name="WindowId" type="i" access="read"/>
   <property name="IconName" type="s" access="read"/>
   <property name="IconThemePath" type="s" access="read"/>
+  <property name="IconPixmap" type="a(iiay)" access="read"/>
   <property name="ToolTip" type="(sa(iiay)ss)" access="read"/>
   <property name="ItemIsMenu" type="b" access="read"/>
   <property name="Menu" type="o" access="read"/>
@@ -58,13 +59,48 @@ MENU_XML = """<node>
 </node>"""
 
 
+ICONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
+
+
+def icon_pixmaps(name="velkey", sizes=(16, 22, 24, 32, 48, 64)):
+    """The icon as raw ARGB images, so the tray can show it even when the icon
+    is not installed in the system theme (e.g. when running from ./run.sh)."""
+    try:
+        import gi
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+    except (ImportError, ValueError):
+        return []
+    out = []
+    for size in sizes:
+        f = os.path.join(ICONS_DIR, "hicolor", "%dx%d" % (size, size), "apps", name + ".png")
+        if not os.path.exists(f):
+            f = os.path.join(ICONS_DIR, "hicolor", "scalable", "apps", name + ".svg")
+        try:
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_size(f, size, size)
+        except Exception:
+            continue
+        if not pb.get_has_alpha():
+            pb = pb.add_alpha(False, 0, 0, 0)
+        w, h, stride, px = pb.get_width(), pb.get_height(), pb.get_rowstride(), pb.get_pixels()
+        argb = bytearray()
+        for y in range(h):
+            row = px[y * stride:y * stride + w * 4]
+            for x in range(0, w * 4, 4):
+                r, g, b, a = row[x:x + 4]
+                argb += bytes((a, r, g, b))  # network byte order ARGB32
+        out.append((w, h, bytes(argb)))
+    return out
+
+
 class Tray:
-    def __init__(self, on_activate, items, icon_name="velkey", icon_path=""):
+    def __init__(self, on_activate, items, icon_name="velkey", icon_path=None):
         """items: list of (id, label, callback) — label None means separator."""
         self.on_activate = on_activate
         self.items = items
         self.icon_name = icon_name
-        self.icon_path = icon_path
+        self.icon_path = icon_path if icon_path is not None else (ICONS_DIR if os.path.isdir(ICONS_DIR) else "")
+        self.pixmaps = icon_pixmaps(icon_name)
         self.tooltip = "Velkey"
         self.bus = None
         self.ids = []
@@ -125,6 +161,7 @@ class Tray:
             "WindowId": GLib.Variant("i", 0),
             "IconName": GLib.Variant("s", self.icon_name),
             "IconThemePath": GLib.Variant("s", self.icon_path),
+            "IconPixmap": GLib.Variant("a(iiay)", self.pixmaps),
             "ToolTip": GLib.Variant("(sa(iiay)ss)", (self.icon_name, [], "Velkey", self.tooltip)),
             "ItemIsMenu": GLib.Variant("b", False),
             "Menu": GLib.Variant("o", "/MenuBar"),
