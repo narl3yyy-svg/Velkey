@@ -100,6 +100,20 @@ cd Velkey
 
 The first time, `runmac.sh` lists the Homebrew packages Velkey needs (GTK 3, PyGObject, OpenSSL 3, icons) and installs them after you say yes. `./run.sh` does the same on a Mac.
 
+**Install it as a Mac app** once you're happy with it:
+
+```bash
+./installmac.sh
+```
+
+This creates **Velkey.app** in your own Applications folder (`~/Applications`, no admin password). Open it from Spotlight, Launchpad or Finder and keep it in the Dock like any other app. `.kdbx` files open in it via right-click → **Open With → Velkey**. The app has its own copy of Velkey, so you can delete the downloaded folder afterwards.
+
+| Command | What it does |
+|---|---|
+| `./runmac.sh` | Run from the folder, nothing installed |
+| `./installmac.sh` | Install or update `~/Applications/Velkey.app` |
+| `./installmac.sh --uninstall` | Remove the app. Your databases and settings stay untouched |
+
 | Works on macOS | Linux-only for now |
 |---|---|
 | Open, create and edit databases, tabs, search, groups | Auto-Type and the global hot key |

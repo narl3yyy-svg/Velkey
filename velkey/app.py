@@ -18,7 +18,8 @@ APP_ID = "io.github.velkey"
 
 class VelkeyApp(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE |
+                         Gio.ApplicationFlags.HANDLES_OPEN)  # OPEN: files from Finder / file managers
         self.version = VERSION
         self.config = None
         self.window = None
@@ -33,6 +34,8 @@ class VelkeyApp(Gtk.Application):
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
+        if sys.platform == "darwin" and os.environ.get("VELKEY_MAC_ICON"):
+            set_mac_dock_icon(os.environ["VELKEY_MAC_ICON"])
         self.config = Config()
         here = os.path.dirname(os.path.abspath(__file__))
         icons = os.path.join(os.path.dirname(here), "icons")
@@ -113,6 +116,14 @@ class VelkeyApp(Gtk.Application):
         self.window.show()
         self.window.present()
 
+    def do_open(self, files, n_files, hint):
+        """Files handed over by Finder ("Open With") or a file manager."""
+        self.activate()
+        for f in files:
+            path = f.get_path()
+            if path and self.window is not None:
+                self.window.open_path(path)
+
     def do_command_line(self, cmdline):
         args = cmdline.get_arguments()[1:]
         auto = "--auto-type" in args or "--autotype" in args
@@ -149,6 +160,37 @@ class VelkeyApp(Gtk.Application):
             self.window.show()
             self.window.present()
         return 0
+
+
+def set_mac_dock_icon(png_path):
+    """Show Velkey's icon in the Dock instead of Python's (macOS only).
+
+    Velkey.app runs on Homebrew's Python, so macOS would show the Python
+    rocket. This calls [NSApp setApplicationIconImage:] through the
+    Objective-C runtime; any failure just leaves the default icon."""
+    try:
+        import ctypes
+        import ctypes.util
+        objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+        ctypes.cdll.LoadLibrary("/System/Library/Frameworks/AppKit.framework/AppKit")
+        vp = ctypes.c_void_p
+        objc.objc_getClass.restype = vp
+        objc.objc_getClass.argtypes = [ctypes.c_char_p]
+        objc.sel_registerName.restype = vp
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+        def send(obj, sel, *args):
+            # objc_msgSend must be called with the exact (non-variadic) signature
+            f = ctypes.CFUNCTYPE(vp, vp, vp, *[type(a) for a in args])(("objc_msgSend", objc))
+            return f(obj, objc.sel_registerName(sel), *args)
+
+        path = send(objc.objc_getClass(b"NSString"), b"stringWithUTF8String:", ctypes.c_char_p(png_path.encode()))
+        image = send(send(objc.objc_getClass(b"NSImage"), b"alloc"), b"initWithContentsOfFile:", vp(path))
+        if image:
+            app = send(objc.objc_getClass(b"NSApplication"), b"sharedApplication")
+            send(app, b"setApplicationIconImage:", vp(image))
+    except Exception:
+        pass
 
 
 def set_process_name(name):
