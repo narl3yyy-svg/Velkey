@@ -187,5 +187,52 @@ class TestPendingDeletion(TempDir):
         self.assertEqual(self.titles(), ["Demo Forum", "Example Shop"])
 
 
+class TestCustomIcons(TempDir):
+    def setUp(self):
+        super().setUp()
+        import base64
+        self.db = fast_db(self.path("demo.kdbx"))
+        icons = kdbx._sub(self.db.meta, "CustomIcons")
+        self.uids = []
+        for name in ("used", "spare"):
+            ic = kdbx._sub(icons, "Icon")
+            uid = kdbx.new_uuid_b64()
+            kdbx._sub(ic, "UUID", uid)
+            kdbx._sub(ic, "Data", base64.b64encode(b"demo-" + name.encode()).decode())
+            self.uids.append(uid)
+        self.e = demo_entry(group(self.db, "Internet"))
+        self.e.custom_icon_uuid = self.uids[0]
+        self.e.backup()                      # the history version uses it too
+        group(self.db, "eMail").custom_icon_uuid = self.uids[0]
+        self.db.save()
+
+    def test_usage_and_unused(self):
+        self.assertEqual(kdbx.icon_usage(self.db, self.uids[0]), (1, 1))
+        self.assertEqual(kdbx.unused_custom_icons(self.db), [self.uids[1]])
+
+    def test_remove_resets_users_and_undo_restores(self):
+        before = kdbx.ET.tostring(self.db.root)
+        log = kdbx.ChangeLog(self.db)
+        log.remove_custom_icon(self.uids[0])
+        self.assertIsNone(self.db.custom_icon(self.uids[0]))
+        self.assertEqual(self.e.custom_icon_uuid, "")
+        self.assertEqual(self.e.history()[0].custom_icon_uuid, "")
+        self.assertEqual(group(self.db, "eMail").custom_icon_uuid, "")
+        self.assertEqual([u for u, _ in self.db.custom_icons()], [self.uids[1]])
+        log.revert()
+        self.assertEqual(kdbx.ET.tostring(self.db.root), before)
+
+    def test_icon_deletion_waits_for_explicit_save(self):
+        log = kdbx.ChangeLog(self.db)
+        log.remove_custom_icon(self.uids[0])
+        kdbx.save_without(self.db, [log])
+        on_disk = kdbx.Database.open(self.path("demo.kdbx"), "demo-master")
+        self.assertIsNotNone(on_disk.custom_icon(self.uids[0]))
+        self.db.save()
+        on_disk = kdbx.Database.open(self.path("demo.kdbx"), "demo-master")
+        self.assertIsNone(on_disk.custom_icon(self.uids[0]))
+        self.assertEqual(on_disk.all_entries()[0].custom_icon_uuid, "")
+
+
 if __name__ == "__main__":
     unittest.main()

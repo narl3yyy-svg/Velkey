@@ -151,7 +151,7 @@ Shortcuts work with ⌘ as well as Ctrl. Velkey uses GTK, so it looks the same a
 |---|---|
 | **Add** an entry and press **OK** | Yes, right away |
 | **Edit** an entry and press **OK** | Yes, right away (**Cancel** saves nothing) |
-| **Delete** an entry or group | **No.** The tab shows `*`. <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings it back, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves the deletion. Closing or locking asks you first. |
+| **Delete** an entry, group or custom icon | **No.** The tab shows `*`. <kbd>Ctrl</kbd>+<kbd>Z</kbd> brings it back, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves the deletion. Closing or locking asks you first. |
 
 Deleting by accident never reaches the file on its own: automatic saves after adding or editing write everything **except** pending deletions. You can change this in *Tools → Options → Files*.
 

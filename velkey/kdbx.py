@@ -1549,6 +1549,26 @@ class ChangeLog:
         self._detach(node.el)
         self.db.modified = True
 
+    def remove_custom_icon(self, uid):
+        """Delete a custom icon. Entries and groups using it (and their history)
+        fall back to their standard icon; recorded for KeePass sync."""
+        icons = self.db.meta.find("CustomIcons")
+        if icons is None:
+            return
+        for ic in list(icons.findall("Icon")):
+            if _text(ic, "UUID") == uid:
+                self._detach(ic)
+        for c in [c for c in self.db.root.find("Root").iter("CustomIconUUID") if (c.text or "") == uid]:
+            self._detach(c)
+        do = self.db.root.find("Root/DeletedObjects")
+        if do is None:
+            do = _sub(self.db.root.find("Root"), "DeletedObjects")
+        d = ET.Element("DeletedObject")
+        _sub(d, "UUID", uid)
+        _sub(d, "DeletionTime", fmt_time_iso(now_utc()))
+        self._attach(d, do)
+        self.db.modified = True
+
     # -- undo / redo
     def revert(self):
         for op in reversed(self.ops):
@@ -1585,3 +1605,24 @@ def save_without(db, logs, path=None):
             db.modified = True
             for log in logs:
                 log.clean = True  # everything except the deletions is now saved
+
+
+def icon_usage(db, uid):
+    """(entries, groups) showing custom icon `uid` (old history versions not counted)."""
+    entries = groups = 0
+    for el in db.root.find("Root").iter():
+        if el.tag in ("Entry", "Group") and _text(el, "CustomIconUUID") == uid:
+            parent = db.parent_of(el)
+            if parent is not None and parent.tag == "History":
+                continue
+            if el.tag == "Entry":
+                entries += 1
+            else:
+                groups += 1
+    return entries, groups
+
+
+def unused_custom_icons(db):
+    """UUIDs of custom icons no entry, group or history entry uses."""
+    used = {c.text for c in db.root.find("Root").iter("CustomIconUUID") if c.text}
+    return [uid for uid, _data in db.custom_icons() if uid not in used]

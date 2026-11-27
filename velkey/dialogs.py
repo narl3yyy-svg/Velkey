@@ -397,12 +397,21 @@ class IconPicker(Gtk.Dialog):
         sw.add(self.cust)
         sw.get_style_context().add_class("plain")
         box.pack_start(sw, True, True, 0)
+        row = Gtk.Box(spacing=8)
         add = Gtk.Button(label="Add Custom Icon from File…")
         add.connect("clicked", self._add)
-        add.set_halign(Gtk.Align.START)
-        box.pack_start(add, False, False, 0)
+        self.del_btn = Gtk.Button(label="Delete Icon")
+        self.del_btn.set_tooltip_text("Delete the selected custom icon (Ctrl+Z in the main window brings it back)")
+        self.del_btn.connect("clicked", self._delete)
+        unused = Gtk.Button(label="Remove Unused Icons…")
+        unused.set_tooltip_text("Delete every custom icon that no entry or group uses")
+        unused.connect("clicked", self._remove_unused)
+        for w in (add, self.del_btn, unused):
+            row.pack_start(w, False, False, 0)
+        box.pack_start(row, False, False, 0)
         self.get_content_area().add(box)
         self.show_all()
+        self._update_delete()
 
     def _fill_custom(self, sel=None):
         for c in self.cust.get_children():
@@ -429,6 +438,65 @@ class IconPicker(Gtk.Dialog):
         if s:
             self.std.unselect_all()
             self.result = (self.result[0], s[0].get_child()._uuid)
+        self._update_delete()
+
+    def _selected_custom(self):
+        s = self.cust.get_selected_children()
+        return s[0].get_child()._uuid if s else None
+
+    def _update_delete(self):
+        if hasattr(self, "del_btn"):
+            self.del_btn.set_sensitive(self._selected_custom() is not None)
+
+    def _record(self, log, what):
+        """Hand the deletion to the main window: unsaved until Ctrl+S, Ctrl+Z undoes it."""
+        w = self.get_transient_for()
+        while w is not None and not hasattr(w, "_deleted"):
+            w = w.get_transient_for()
+        if w is not None:
+            w._deleted(log, what)
+        theme.clear_cache()
+        if self.result[1] and self.db.custom_icon(self.result[1]) is None:
+            self.result = (self.result[0], "")  # the chosen icon is gone: back to the standard one
+        self._fill_custom(self.result[1])
+        self._update_delete()
+
+    def _delete(self, *_):
+        uid = self._selected_custom()
+        if uid is None:
+            return
+        n_e, n_g = kdbx.icon_usage(self.db, uid)
+        users = []
+        if n_e:
+            users.append("%d %s" % (n_e, "entry" if n_e == 1 else "entries"))
+        if n_g:
+            users.append("%d %s" % (n_g, "group" if n_g == 1 else "groups"))
+        detail = ("It is used by %s, which will show %s standard icon instead. "
+                  % (" and ".join(users), "its" if n_e + n_g == 1 else "their")
+                  if users else "No entry or group uses it. ")
+        if not confirm(self, "Delete this custom icon?",
+                       detail + "It is not saved until you press Ctrl+S, and Ctrl+Z in the main window "
+                                "brings it back until then.", "Delete", destructive=True):
+            return
+        log = kdbx.ChangeLog(self.db)
+        log.remove_custom_icon(uid)
+        self._record(log, "a custom icon")
+
+    def _remove_unused(self, *_):
+        uids = kdbx.unused_custom_icons(self.db)
+        if not uids:
+            message(self, "Every custom icon is in use", "There is nothing to remove.")
+            return
+        n = len(uids)
+        if not confirm(self, "Remove %d unused custom %s?" % (n, "icon" if n == 1 else "icons"),
+                       "No entry or group uses %s. It is not saved until you press Ctrl+S, and Ctrl+Z in "
+                       "the main window brings %s back until then." % (("it", "it") if n == 1 else ("them", "them")),
+                       "Remove", destructive=True):
+            return
+        log = kdbx.ChangeLog(self.db)
+        for uid in uids:
+            log.remove_custom_icon(uid)
+        self._record(log, "%d unused custom %s" % (n, "icon" if n == 1 else "icons"))
 
     def _add(self, *_):
         fc = Gtk.FileChooserDialog(title="Choose Icon Image", transient_for=self, action=Gtk.FileChooserAction.OPEN)
@@ -477,8 +545,10 @@ def icon_button(db, icon_id, custom_uuid):
         d = IconPicker(btn.get_toplevel(), db, btn.state[0], btn.state[1])
         if d.run() == Gtk.ResponseType.OK:
             btn.state = list(d.result)
-            refresh()
         d.destroy()
+        if btn.state[1] and db.custom_icon(btn.state[1]) is None:
+            btn.state[1] = ""  # its custom icon was deleted in the picker
+        refresh()
     btn.connect("clicked", clicked)
     btn.set_tooltip_text("Change icon")
     return btn

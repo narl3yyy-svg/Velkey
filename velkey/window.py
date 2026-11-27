@@ -947,7 +947,7 @@ class MainWindow(Gtk.ApplicationWindow):
     def _ask_deletions(self, verb="closing"):
         """Unsaved deletions: ask whether to save them. 'save'/'discard'/'cancel'."""
         n = sum(1 for log in self.doc.pending for op in log.ops
-                if op[0] == "detach" and op[1].tag in ("Entry", "Group"))
+                if op[0] == "detach" and op[1].tag in ("Entry", "Group", "Icon"))
         return dialogs.ask_save(
             self, "Save the deletion of %d %s before %s?" % (n, "item" if n == 1 else "items", verb),
             "If you don't save it, the deleted items stay in the database file (everything else is saved).",
