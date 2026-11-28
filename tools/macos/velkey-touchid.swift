@@ -1,7 +1,7 @@
 // Touch ID helper for Velkey on macOS. Built by runmac.sh / installmac.sh with
 // `xcrun swiftc` (Apple's command-line tools, which Homebrew already needs).
 //
-//   velkey-touchid available                 exit 0 if Touch ID can be used
+//   velkey-touchid available                 exit 0 if Touch ID can be used, else prints why
 //   velkey-touchid store  ACCOUNT            password on stdin -> Keychain
 //   velkey-touchid get    ACCOUNT REASON     fingerprint, then password -> stdout
 //   velkey-touchid delete ACCOUNT
@@ -32,11 +32,33 @@ func canUseTouchID() -> Bool {
     return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
 }
 
+/// Why Touch ID cannot be used right now, in plain words ("" when it can).
+func whyNot() -> String {
+    var err: NSError?
+    if LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) { return "" }
+    guard let e = err else { return "macOS says Touch ID is not available" }
+    switch LAError.Code(rawValue: e.code) {
+    case .biometryNotAvailable?:
+        return "this Mac has no Touch ID sensor, or it is turned off (for example the lid is closed while you use an external keyboard)"
+    case .biometryNotEnrolled?:
+        return "no fingerprint is set up yet: add one in System Settings → Touch ID & Password"
+    case .biometryLockout?:
+        return "Touch ID is locked after too many tries: unlock your Mac with its password once"
+    case .passcodeNotSet?:
+        return "this Mac has no login password, which Touch ID needs"
+    default:
+        return e.localizedDescription
+    }
+}
+
 guard args.count >= 2 else { fail(1, "usage: velkey-touchid available|store|get|delete ACCOUNT [REASON]") }
 
 switch args[1] {
 case "available":
-    exit(canUseTouchID() ? 0 : 4)
+    let reason = whyNot()
+    if reason.isEmpty { exit(0) }
+    print(reason)
+    exit(4)
 
 case "store":
     guard args.count >= 3 else { fail(1, "store needs an account") }

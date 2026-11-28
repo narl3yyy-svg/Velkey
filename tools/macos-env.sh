@@ -85,12 +85,32 @@ velkey_mac_touchid() {
   local src="$1/velkey-touchid.swift" out="$2"
   if [ -f "$src" ] && { [ ! -x "$out" ] || [ "$src" -nt "$out" ]; }; then
     mkdir -p "$(dirname "$out")"
-    if ! xcrun swiftc -O -o "$out.tmp" "$src" >/dev/null 2>&1; then
+    if ! xcrun --find swiftc >/dev/null 2>&1; then
+      printf 'Note: Touch ID needs Apple'"'"'s command-line tools. Install them with:  xcode-select --install\n' >&2
+    elif ! xcrun swiftc -O -o "$out.tmp" "$src" 2>"$out.log"; then
       rm -f "$out.tmp"
+      printf 'Note: the Touch ID helper could not be built (details: %s)\n' "$out.log" >&2
     else
       mv -f "$out.tmp" "$out"
+      rm -f "$out.log"
     fi
   fi
   if [ -x "$out" ]; then export VELKEY_TOUCHID="$out"; fi
   return 0
+}
+
+# Print each Touch ID step and whether it works (./runmac.sh --check-touchid).
+velkey_mac_touchid_report() {
+  echo "Touch ID check"
+  if [ -z "${VELKEY_TOUCHID:-}" ]; then
+    echo "  ✗ helper not built (see the note above, if any)"
+    return 1
+  fi
+  echo "  ✓ helper: $VELKEY_TOUCHID"
+  local why
+  if why="$("$VELKEY_TOUCHID" available)"; then
+    echo "  ✓ Touch ID is available. In Velkey: File → Set Up Touch ID for This Database…"
+  else
+    echo "  ✗ Touch ID can't be used: $why"
+  fi
 }

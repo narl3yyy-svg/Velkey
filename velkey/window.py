@@ -327,7 +327,8 @@ class MainWindow(Gtk.ApplicationWindow):
             None,
             ("Database _Settings…", self.database_settings, None, "db"),
             ("Change _Master Key…", self.change_master_key, None, "db"),
-        ] + ([("Forget _Touch ID for This Database", self.forget_touchid, None, "db")]
+        ] + ([("Set Up _Touch ID for This Database…", self.setup_touchid, None, "db"),
+              ("Forget Touch ID for This Database", self.forget_touchid, None, "db")]
              if sys.platform == "darwin" else []) + [
             None,
             ("_Lock Workspace", self.toggle_lock, "<Control>l"),
@@ -876,6 +877,36 @@ class MainWindow(Gtk.ApplicationWindow):
         else:
             self.config.data.setdefault("touchid_declined", {})[path] = True
         self.config.save()
+
+    def setup_touchid(self):
+        """File → Set Up Touch ID: works any time, or says exactly why it can't."""
+        path = self.db_path
+        if self.db is None or not path:
+            return
+        if not touchid.refresh():
+            dialogs.message(self, "Touch ID can't be set up", touchid.reason())
+            return
+        name = os.path.splitext(os.path.basename(path))[0]
+        if self._touchid_enabled(path):
+            dialogs.message(self, "Touch ID is already set up for “%s”" % name,
+                            "The unlock screen asks for your fingerprint. To turn it off, use "
+                            "File → Forget Touch ID for This Database.")
+            return
+        pw = dialogs.ask_master_password(self, "Set Up Touch ID for “%s”" % name,
+                                         "Enter the master password once. Velkey keeps it in this Mac's Keychain, "
+                                         "encrypted by macOS and only usable after your fingerprint.")
+        if pw is None:
+            return
+        if kdbx.composite_key(pw if (pw or not self.keyfile) else None, self.keyfile) != self.db._composite:
+            dialogs.error(self, "That is not this database's master password", "Touch ID was not set up.")
+            return
+        if not touchid.store(path, pw):
+            dialogs.error(self, "Touch ID could not be set up", "macOS did not accept the Keychain entry.")
+            return
+        self.config.data.setdefault("touchid", {})[path] = True
+        self.config.data.setdefault("touchid_declined", {}).pop(path, None)
+        self.config.save()
+        self.set_status("Touch ID is set up for “%s”: it is used the next time you unlock" % name, 8)
 
     def forget_touchid(self):
         path = self.db_path

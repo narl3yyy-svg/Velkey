@@ -8,6 +8,7 @@
 #   ./runmac.sh                 start Velkey
 #   ./runmac.sh file.kdbx       open a database
 #   ./runmac.sh --check-autotype   check Auto-Type step by step
+#   ./runmac.sh --check-touchid    check whether Touch ID can be used, and why not
 #
 # The tray icon is Linux-only for now.
 set -euo pipefail
@@ -25,6 +26,10 @@ velkey_mac_check_openssl "$HERE" || fail "This OpenSSL has no Argon2 (needs 3.2 
 velkey_mac_touchid "$HERE/tools/macos" "$HOME/Library/Application Support/Velkey/bin/velkey-touchid"
 export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
 cd "$HERE"
+if [ "${1:-}" = "--check-touchid" ]; then     # is Touch ID usable, and if not, why
+  velkey_mac_touchid_report
+  exit 0
+fi
 if [ "${1:-}" = "--check-autotype" ]; then   # step-by-step Auto-Type check
   shift
   exec "$PY" "$HERE/tools/mac_autotype_check.py" "$@"

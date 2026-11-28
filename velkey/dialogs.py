@@ -1315,6 +1315,26 @@ class GroupDialog(Gtk.Dialog):
 # ---------------------------------------------------------------------------
 # master key / new database
 # ---------------------------------------------------------------------------
+def ask_master_password(parent, title, text):
+    """A single masked password field. Returns the text, or None if cancelled."""
+    d = make_dialog(parent, title, "OK", width=460)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    box.set_border_width(14)
+    lbl = Gtk.Label(label=text, xalign=0)
+    lbl.set_line_wrap(True)
+    lbl.get_style_context().add_class("dim")
+    box.pack_start(lbl, False, False, 0)
+    pw = password_entry(placeholder="Master password")
+    pw.set_activates_default(True)
+    box.pack_start(pw, False, False, 0)
+    d.get_content_area().add(box)
+    d.show_all()
+    pw.grab_focus()
+    res = pw.get_text() if d.run() == Gtk.ResponseType.OK else None
+    d.destroy()
+    return res
+
+
 def ask_key(parent, path, error_text=""):
     """Ask for the password / key file of `path`. Returns (pw, kf) or None."""
     d = make_dialog(parent, "Open “%s”" % os.path.basename(path), "Open", width=460)

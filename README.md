@@ -125,7 +125,7 @@ This creates **Velkey.app** in your own Applications folder (`~/Applications`, n
 
 **Auto-Type on macOS** needs one permission: the first time, macOS asks you to allow Velkey under **System Settings → Privacy & Security → Accessibility** (when you run `./runmac.sh`, allow **Terminal** instead). Velkey reads the page address from Chrome, Brave, Edge, Helium, Vivaldi and Firefox like on Linux; for **Safari** macOS asks once whether Velkey may read Safari's address. The password-box check works in apps that report their fields (Safari and native apps); elsewhere Velkey types user name → Tab → password like KeePass.
 
-**Touch ID:** after you unlock a database with its password, Velkey offers to remember it in your Mac's Keychain; from then on the unlock screen asks for your fingerprint. Typing the password always works too, and *File → Forget Touch ID for This Database* turns it off. (Needs Apple's command-line tools, which Homebrew already installs.)
+**Touch ID:** after you unlock a database with its password, Velkey offers to remember it in your Mac's Keychain; from then on the unlock screen asks for your fingerprint. You can also turn it on any time with *File → Set Up Touch ID for This Database…*, which says exactly why if it can't (no sensor, no fingerprint enrolled…). Typing the password always works too, and *File → Forget Touch ID for This Database* turns it off. `./runmac.sh --check-touchid` checks it from Terminal. (Needs Apple's command-line tools, which Homebrew already installs.)
 
 Something not working? `./runmac.sh --check-autotype` checks each step (permission, active window, page address, hot key) and says what's missing.
 

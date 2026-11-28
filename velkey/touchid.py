@@ -21,17 +21,43 @@ def helper():
     return path if sys.platform == "darwin" and path and os.access(path, os.X_OK) else ""
 
 
+_reason = ""
+
+
 def available():
     """Touch ID can be used on this Mac (sensor present and a finger enrolled)."""
-    global _available
+    global _available, _reason
     if _available is None:
         h = helper()
-        try:
-            _available = bool(h) and subprocess.run([h, "available"], timeout=5,
-                                                    capture_output=True).returncode == 0
-        except Exception:
-            _available = False
+        _available, _reason = False, ""
+        if not h and sys.platform != "darwin":
+            _reason = "Touch ID is only available on a Mac."
+        elif not h:
+            _reason = ("Velkey's small Touch ID helper is not built: Apple's command-line tools seem to be "
+                       "missing. Install them in Terminal with  xcode-select --install  and then run "
+                       "./installmac.sh (or ./runmac.sh) again.")
+        else:
+            try:
+                r = subprocess.run([h, "available"], timeout=5, capture_output=True, text=True)
+                _available = r.returncode == 0
+                if not _available:
+                    _reason = "Touch ID can't be used: " + (r.stdout.strip() or "macOS says it is not available") + "."
+            except Exception as e:
+                _reason = "The Touch ID helper did not run (%s)." % e
     return _available
+
+
+def reason():
+    """Why Touch ID is not available, in plain words ('' when it is)."""
+    available()
+    return _reason
+
+
+def refresh():
+    """Ask macOS again (e.g. after the user enrolled a fingerprint)."""
+    global _available
+    _available = None
+    return available()
 
 
 def account(db_path):

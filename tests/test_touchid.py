@@ -59,6 +59,13 @@ class TestTouchID(unittest.TestCase):
         touchid.forget("/demo/Demo.kdbx")
         self.assertEqual(touchid.unlock("/demo/Demo.kdbx", "r"), ("missing", None))
 
+    def test_reason_when_macos_says_no(self):
+        with open(self.fake, "w") as f:
+            f.write('#!/bin/sh\necho "no fingerprint is set up yet"\nexit 4\n')
+        touchid._available = None
+        self.assertFalse(touchid.available())
+        self.assertIn("no fingerprint is set up yet", touchid.reason())
+
     def test_not_offered_without_helper(self):
         touchid.helper = lambda: ""
         touchid._available = None
@@ -73,7 +80,7 @@ class TestHelperBuild(unittest.TestCase):
             bindir = os.path.join(d, "bin")
             os.mkdir(bindir)
             with open(os.path.join(bindir, "xcrun"), "w") as f:   # stand-in Swift compiler
-                f.write('#!/bin/sh\necho built >> "%s/builds"\n'
+                f.write('#!/bin/sh\n[ "$1" = --find ] && exit 0\necho built >> "%s/builds"\n'
                         'while [ "$1" != "-o" ]; do shift; done; printf "#!/bin/sh\\n" > "$2"; chmod +x "$2"\n' % d)
             os.chmod(os.path.join(bindir, "xcrun"), stat.S_IRWXU)
             out = os.path.join(d, "out", "velkey-touchid")
