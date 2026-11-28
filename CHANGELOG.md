@@ -5,7 +5,7 @@ While the major number is 0, Velkey is young and things may still change between
 
 The version is set in one place, [`velkey/__init__.py`](velkey/__init__.py). To release a new one: change it there, add a section here, commit, then tag it (`git tag -a v0.2.0 -m "Velkey 0.2.0"` and `git push origin v0.2.0`).
 
-## Unreleased
+## [0.1.7] – 2026-11-27
 
 ### Fixed
 - macOS Touch ID could silently not appear (no sensor, no fingerprint enrolled, helper not built, or the one-time offer answered with "not now"). New *File → Set Up Touch ID for This Database…* works any time and otherwise says exactly why Touch ID can't be used; `./runmac.sh --check-touchid` checks it from Terminal, and `runmac.sh` / `installmac.sh` now show why the helper could not be built.
@@ -71,6 +71,7 @@ First numbered release.
 - Linux: `./run.sh` or `./install.sh`.
 - macOS (Apple silicon and Intel): `./runmac.sh` or `./installmac.sh` (installs `Velkey.app`).
 
+[0.1.7]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.7
 [0.1.6]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.6
 [0.1.5]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.5
 [0.1.4]: https://github.com/narl3yyy-svg/Velkey/releases/tag/v0.1.4
